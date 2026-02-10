@@ -1,9 +1,4 @@
 <?php
-// ----------------------
-// auth.php
-// Local-only admin authentication
-// ----------------------
-
 session_start();
 
 // ---------------- CONFIG: Admin MAC ----------------
@@ -19,9 +14,11 @@ foreach ($output as $line) {
     }
 }
 
-// ---------------- CHECK MAC OR LOCALHOST ----------------
-$client_ip = $_SERVER['REMOTE_ADDR'];
+// ---------------- CHECK MAC ----------------
+$client_ip = $_SERVER['REMOTE_ADDR'] ?? '';
+$current_page = basename($_SERVER['PHP_SELF']);
 
+// Only allow this PC
 if ($client_ip !== '192.168.100.124' && !in_array(strtoupper($allowed_mac), $macs)) {
     http_response_code(403);
     die("
@@ -32,8 +29,11 @@ if ($client_ip !== '192.168.100.124' && !in_array(strtoupper($allowed_mac), $mac
     ");
 }
 
-// ---------------- CHECK SESSION LOGIN ----------------
-if (!isset($_SESSION['admin_id']) && basename($_SERVER['PHP_SELF']) != 'login.php') {
+// ---------------- CHECK SESSION ----------------
+// Allow login, register, reset-password without session
+$public_pages = ['login.php', 'admin-register.php', 'reset-password.php'];
+
+if (!in_array($current_page, $public_pages) && !isset($_SESSION['admin_id'])) {
     header("Location: login.php");
     exit;
 }
