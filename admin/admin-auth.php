@@ -22,7 +22,7 @@ foreach ($output as $line) {
 // ---------------- CHECK MAC OR LOCALHOST ----------------
 $client_ip = $_SERVER['REMOTE_ADDR'];
 
-if ($client_ip !== '127.0.0.1' && !in_array(strtoupper($allowed_mac), $macs)) {
+if ($client_ip !== '192.168.100.124' && !in_array(strtoupper($allowed_mac), $macs)) {
     http_response_code(403);
     die("
         <h2 style='text-align:center;margin-top:50px'>
