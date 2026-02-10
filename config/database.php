@@ -1,4 +1,11 @@
 <?php 
+// Load .env variables
+if (file_exists(__DIR__.'/.env')) {
+    foreach (file(__DIR__.'/.env') as $line) {
+        if (trim($line) === '' || strpos($line, '#') === 0) continue;
+        putenv(trim($line));
+    }
+}
 
 // Read environment variables correctly
 $host = getenv("DB_HOST");
