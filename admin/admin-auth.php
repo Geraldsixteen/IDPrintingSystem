@@ -1,25 +1,25 @@
 <?php
+// ================== ADMIN AUTHENTICATION =================
 session_start();
 
-// ================== CONFIG ==================
-// Only allow this MAC address (your admin PC)
-$allowed_mac = '90-10-57-42-A6-30'; // <-- replace with your active MAC
+// -------- CONFIG: Your Admin PC MAC --------
+$allowed_mac = '90-10-57-42-A6-30'; // <-- replace with your actual admin PC MAC
 
-// ================== GET ACTIVE MAC ADDRESSES ==================
+// -------- GET ACTIVE MAC ADDRESSES --------
 $macs = [];
-exec('getmac', $output);
+exec('getmac', $output); // Windows command
 
 foreach ($output as $line) {
     // Skip disconnected adapters
     if (strpos($line, 'Media disconnected') !== false) continue;
 
-    // Match MAC addresses like XX-XX-XX-XX-XX-XX
+    // Extract MAC address
     if (preg_match('/([0-9A-F]{2}[-:]){5}([0-9A-F]{2})/i', $line, $matches)) {
         $macs[] = strtoupper($matches[0]);
     }
 }
 
-// ================== CHECK MAC ==================
+// -------- CHECK MAC --------
 if (!in_array(strtoupper($allowed_mac), $macs)) {
     http_response_code(403);
     die("
@@ -28,5 +28,11 @@ if (!in_array(strtoupper($allowed_mac), $macs)) {
         This admin system can only be used on the authorized computer.
         </h2>
     ");
+}
+
+// -------- CHECK ADMIN LOGIN --------
+if (!isset($_SESSION['admin_id'])) {
+    header("Location: login.php");
+    exit;
 }
 ?>
