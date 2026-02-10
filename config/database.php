@@ -16,11 +16,11 @@ if (file_exists(__DIR__.'/.env')) {
 }
 
 // Now read environment variables
-$host = getenv("DB_HOST");
-$port = getenv("DB_PORT");
-$db   = getenv("DB_NAME");
-$user = getenv("DB_USER");
-$pass = getenv("DB_PASS");
+$host = "dpg-d5vnr7e3jp1c73cc3bag-a.oregon-postgres.render.com";  // replace with your DB host
+$port = "5432";  // replace with your DB port
+$db   = "id_printing_db";  // replace with your DB name
+$user = "auto";
+$pass = "5NpiRI7p6ZF6xTUN2U4blfnoN5BDIzRJ";
 
 // Optional: debug to check if variables are read correctly
 // echo "$host, $port, $db, $user\n";
