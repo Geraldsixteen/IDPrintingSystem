@@ -10,7 +10,19 @@ if (!isset($_SESSION['admin_id'])) {
 // Include your existing database connection
 require_once __DIR__ . '/../config/database.php';
 
-// ==========================================================
+// ================= Display Photo Function =================
+if (!function_exists('displayPhoto')) {
+    function displayPhoto($photoBytea) {
+        if ($photoBytea !== null) {
+            $finfo = new finfo(FILEINFO_MIME_TYPE);
+            $mime = $finfo->buffer($photoBytea);
+            $base64 = base64_encode($photoBytea);
+            return "<img src='data:$mime;base64,$base64' alt='Photo'>";
+        } else {
+            return "<span>No photo</span>";
+        }
+    }
+}
 
 // GET filters
 $search = isset($_GET['search']) ? trim($_GET['search']) : '';
@@ -232,17 +244,8 @@ img { width:70px; height:90px; object-fit:cover; border-radius:6px; border:2px s
                             <td><?= htmlspecialchars($row['guardian_contact']) ?></td>
                             <td>
                                 <?php
-                                    function displayPhoto($photoBytea) {
-                                        if ($photoBytea !== null) {
-                                            // Convert bytea to base64
-                                            $base64 = base64_encode($photoBytea);
-                                            return "<img src='data:image/jpeg;base64,$base64' alt='Photo'>";
-                                        } else {
-                                            return "<span>No photo</span>";
-                                        }
-                                    } displayPhoto($row['photo']);
+                                    echo displayPhoto($row['upload_photo']);
                                 ?>
-
                             </td>
                             <td><?= htmlspecialchars($row['created_at']) ?></td>
                             <td class="actions">
