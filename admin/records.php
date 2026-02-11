@@ -14,10 +14,14 @@ require_once __DIR__ . '/../config/database.php';
 if (!function_exists('displayPhoto')) {
     function displayPhoto($photoBytea) {
         if ($photoBytea !== null) {
-            $finfo = new finfo(FILEINFO_MIME_TYPE);
-            $mime = $finfo->buffer($photoBytea);
+            // If $photoBytea is a resource (LOB), read it as a string
+            if (is_resource($photoBytea)) {
+                $photoBytea = stream_get_contents($photoBytea);
+            }
+            
+            // Encode to base64
             $base64 = base64_encode($photoBytea);
-            return "<img src='data:$mime;base64,$base64' alt='Photo'>";
+            return "<img src='data:image/jpeg;base64,$base64' alt='Photo'>";
         } else {
             return "<span>No photo</span>";
         }
