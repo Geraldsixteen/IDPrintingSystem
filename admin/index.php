@@ -120,7 +120,7 @@ overflow-x:auto;
 <div class="sidebar">
     <div>
         <h2>ID System</h2>
-        <a href="layout.php" class="active">🏠 Dashboard</a>
+        <a href="index.php" class="active">🏠 Dashboard</a>
         <a href="print-id.php">🖨️ Print</a>
         <a href="records.php">📑 Records</a>
         <a href="archive.php">📁 Archive</a>

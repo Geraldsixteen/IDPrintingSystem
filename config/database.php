@@ -6,8 +6,8 @@ $db   = "id_printing_db";
 $user = "auto";
 $pass = "5NpiRI7p6ZF6xTUN2U4blfnoN5BDIzRJ";
 
-// DSN
-$dsn = "pgsql:host=$host;port=$port;dbname=$db";
+// DSN with SSL required
+$dsn = "pgsql:host=$host;port=$port;dbname=$db;sslmode=require";
 
 $options = [
     PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
@@ -17,7 +17,8 @@ $options = [
 
 try {
     $pdo = new PDO($dsn, $user, $pass, $options);
-    // echo "Connected successfully!";
+    // echo "Connected to Render PostgreSQL successfully!";
 } catch (PDOException $e) {
     die("PostgreSQL connection failed: " . $e->getMessage());
 }
+?>
