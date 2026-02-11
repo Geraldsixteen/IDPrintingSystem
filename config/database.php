@@ -7,7 +7,7 @@ $user = "auto";
 $pass = "5NpiRI7p6ZF6xTUN2U4blfnoN5BDIzRJ";
 
 // DSN
-$dsn = "pgsql:host=$host;port=$port;dbname=$db;sslmode=require";
+$dsn = "pgsql:host=$host;port=$port;dbname=$db";
 
 $options = [
     PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
