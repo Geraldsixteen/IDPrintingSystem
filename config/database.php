@@ -1,30 +1,25 @@
 <?php
-// Load .env variables correctly
-if (file_exists(__DIR__.'/.env')) {
-    foreach (file(__DIR__.'/.env') as $line) {
+// Load environment variables from .env
+$envFile = __DIR__ . '/.env';
+if (file_exists($envFile)) {
+    foreach (file($envFile) as $line) {
         $line = trim($line);
         if ($line === '' || strpos($line, '#') === 0) continue;
-
-        // Split into key=value
         $parts = explode('=', $line, 2);
         if (count($parts) === 2) {
-            $key = trim($parts[0]);
-            $value = trim($parts[1]);
-            putenv("$key=$value");
+            putenv(trim($parts[0]) . '=' . trim($parts[1]));
         }
     }
 }
 
-// Now read environment variables
-$host = getenv("DB_HOST");
-$port = getenv("DB_PORT");
-$db   = getenv("DB_NAME");
-$user = getenv("DB_USER");
-$pass = getenv("DB_PASS");
+// Get variables
+$host = getenv('DB_HOST');
+$port = getenv('DB_PORT');
+$db   = getenv('DB_NAME');
+$user = getenv('DB_USER');
+$pass = getenv('DB_PASS');
 
-// Optional: debug to check if variables are read correctly
-// echo "$host, $port, $db, $user\n";
-
+// DSN string for PostgreSQL
 $dsn = "pgsql:host=$host;port=$port;dbname=$db";
 
 $options = [
