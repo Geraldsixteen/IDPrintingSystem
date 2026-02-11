@@ -25,7 +25,7 @@ $pass = getenv("DB_PASS");
 // Optional: debug to check if variables are read correctly
 // echo "$host, $port, $db, $user\n";
 
-$dsn = "pgsql:DB_HOST=$host;DB_PORT=$port;DB_NAME=$db";
+$dsn = "pgsql:host=$host;port=$port;dbname=$db";
 
 $options = [
     PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
