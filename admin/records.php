@@ -231,11 +231,18 @@ img { width:70px; height:90px; object-fit:cover; border-radius:6px; border:2px s
                             <td><?= htmlspecialchars($row['guardian_name']) ?></td>
                             <td><?= htmlspecialchars($row['guardian_contact']) ?></td>
                             <td>
-                                <?php if(!empty($row['upload_photo']) && file_exists("../uploads/".$row['upload_photo'])): ?>
-                                    <img src="../uploads/<?= htmlspecialchars($row['upload_photo']) ?>" alt="Photo">
-                                <?php else: ?>
-                                    <span>No photo</span>
-                                <?php endif; ?>
+                                <?php
+                                    function displayPhoto($photoBytea) {
+                                        if ($photoBytea !== null) {
+                                            // Convert bytea to base64
+                                            $base64 = base64_encode($photoBytea);
+                                            return "<img src='data:image/jpeg;base64,$base64' alt='Photo'>";
+                                        } else {
+                                            return "<span>No photo</span>";
+                                        }
+                                    } displayPhoto($row['photo']);
+                                ?>
+
                             </td>
                             <td><?= htmlspecialchars($row['created_at']) ?></td>
                             <td class="actions">
