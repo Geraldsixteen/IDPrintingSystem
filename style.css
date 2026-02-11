@@ -1,0 +1,49 @@
+body { transition: 0.3s ease, color 0.3s ease; }
+.topbar { background:#fff; color:#222; padding:20px; text-align:center; font-size:24px; font-weight:600;
+          box-shadow:0 2px 6px rgba(0,0,0,0.1); transition: 0.3s ease, color 0.3s ease; }
+
+.sidebar { width:220px; background:#001ec6; color:white; display:flex; flex-direction:column;
+           justify-content:space-between; padding:20px 0; transition: 0.3s ease; }
+.sidebar h2 { text-align:center; margin-bottom:30px; font-size:22px; letter-spacing:1px; }
+.sidebar a { white-space: nowrap; color:white; text-decoration:none; padding:12px 20px; display:block; transition:0.3s ease; font-weight:500;border-radius:4px; margin:3px 10px; }
+
+.toggle-mode { margin:15px; padding:10px; text-align:center; cursor:pointer; background:#ffff;
+               color:#001ec6; border-radius:20px; font-weight:600; transition:0.3s ease; }
+.toggle-mode:hover { background:#ddd; }
+
+body.dark .topbar { background:#222; color:#fff; }
+body.dark { background:#1c1c1c; color:#eaeaea; }
+body.dark .sidebar { background:#111; color:#fff; }
+body.dark .sidebar a { color:#ddd; }
+body.dark .sidebar a:hover, body.dark .sidebar a.active { background:#333; }
+body.dark .toggle-mode { background:#333; color:#fff; }
+body.dark .toggle-mode:hover { background: rgba(255, 255, 255, 0.3); }
+/* Match select dropdown with input fields */
+select {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    background-color: #fff;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    padding: 12px;
+    font-size: 15px;
+    width: 100%;
+    cursor: pointer;
+    margin-bottom: 15px;
+    transition: 0.3s ease;
+}
+
+/* Add dropdown arrow style */
+select:focus {
+    border-color: #3549a3;
+    outline: none;
+    box-shadow: 0 0 6px rgba(53,73,163,0.2);
+}
+
+/* Dark mode support */
+body.dark select {
+    background-color: #2c2c2c;
+    color: #eaeaea;
+    border-color: #555;
+}
