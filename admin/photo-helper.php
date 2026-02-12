@@ -1,11 +1,12 @@
-<?php
+<?php 
 // ==================== PHOTO HELPER (Dynamic) ====================
 // Automatically handles local or deployed environment for photos
 
 function displayPhoto($filename){
+    // If no photo
     if(empty($filename)){
-        return "<div style='width:180px;height:180px;display:flex;align-items:center;justify-content:center;
-                background:#eee;color:#555;font-weight:600;border:2px solid #000;border-radius:8px;margin:20px auto;'>
+        return "<div style='width:70px;height:90px;display:flex;align-items:center;justify-content:center;
+                background:#eee;color:#555;font-weight:600;border:2px solid #000;border-radius:6px;margin:0 auto;'>
                 No Photo
                 </div>";
     }
@@ -16,11 +17,19 @@ function displayPhoto($filename){
     if($isProd){
         // deployed system (Render)
         $baseUrl = 'https://' . $_SERVER['HTTP_HOST'] . '/uploads/';
+        $filePath = __DIR__ . '/../public/uploads/' . $filename;
     } else {
-        // local admin pulls photos from deployed registration system
-        $baseUrl = 'https://idprintingsystem-1.onrender.com/uploads/';
+        // local system: use local uploads folder
+        $baseUrl = '../public/uploads/';
+        $filePath = __DIR__ . '/../public/uploads/' . $filename;
     }
 
-    return "<img src='" . htmlspecialchars($baseUrl . $filename) . "' alt='Photo' 
-            style='width:180px;height:180px;object-fit:cover;border:2px solid #000;border-radius:8px;margin:20px auto;'>";
+    // If file exists, show it, otherwise show default
+    if(file_exists($filePath)){
+        return "<img src='" . htmlspecialchars($baseUrl . $filename) . "' alt='Photo' 
+                style='width:70px;height:90px;object-fit:cover;border:2px solid #000;border-radius:6px;'>";
+    } else {
+        return "<img src='" . htmlspecialchars($baseUrl . 'default.png') . "' alt='No Photo' 
+                style='width:70px;height:90px;object-fit:cover;border:2px solid #000;border-radius:6px;'>";
+    }
 }
