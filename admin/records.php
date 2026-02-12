@@ -271,7 +271,6 @@ img { width:70px; height:90px; object-fit:cover; border-radius:6px; border:2px s
 
 <!-- Live auto-refresh table every 3 seconds -->
 <script>
-// Live auto-refresh table every 3 seconds
 function fetchRecords() {
     const params = new URLSearchParams({
         ajax: 1,
@@ -287,16 +286,22 @@ function fetchRecords() {
         // Replace tbody directly
         const parser = new DOMParser();
         const doc = parser.parseFromString(html, 'text/html');
-        const tbody = doc.querySelector('tbody');
-        if(tbody){
-            document.querySelector('tbody').innerHTML = tbody.innerHTML;
+        const newTbody = doc.querySelector('tbody');
+        if(newTbody){
+            document.querySelector('tbody').innerHTML = newTbody.innerHTML;
+
+            // Fix relative image paths after AJAX load
+            document.querySelectorAll('tbody img').forEach(img => {
+                if(img.src.startsWith(window.location.origin + '/IDPrintingSystem/')){
+                    img.src = img.src.replace('/IDPrintingSystem/', '/'); 
+                    // Adjust if your public folder is at project root
+                }
+            });
         }
     })
     .catch(err => console.error(err));
 }
 
-// Refresh every 3 seconds
-setInterval(fetchRecords, 3000);
 </script>
 
 
