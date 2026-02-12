@@ -66,7 +66,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $stmtUpdate->execute(['id' => $id]);
                 }
 
-                header('Location: layout.php');
+                header('Location: index.php');
                 exit;
             } else {
                 $err = "Invalid username or password.";

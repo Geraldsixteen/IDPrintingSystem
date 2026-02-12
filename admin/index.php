@@ -121,7 +121,6 @@ overflow-x:auto;
     <div>
         <h2>ID System</h2>
         <a href="index.php" class="active">🏠 Dashboard</a>
-        <a href="print-id.php">🖨️ Print</a>
         <a href="records.php">📑 Records</a>
         <a href="archive.php">📁 Archive</a>
         <a href="logout.php">📤 Logout</a>

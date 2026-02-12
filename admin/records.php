@@ -1,4 +1,4 @@
-<?php      
+<?php         
 require_once __DIR__ . '/admin-auth.php';
 
 if (!isset($_SESSION['admin_id'])) {
@@ -7,26 +7,10 @@ if (!isset($_SESSION['admin_id'])) {
 }
 
 // ================== PostgreSQL Connection ==================
-// Include your existing database connection
 require_once __DIR__ . '/../config/database.php';
 
-// ================= Display Photo Function =================
-if (!function_exists('displayPhoto')) {
-    function displayPhoto($photoBytea) {
-        if ($photoBytea !== null) {
-            // If $photoBytea is a resource (LOB), read it as a string
-            if (is_resource($photoBytea)) {
-                $photoBytea = stream_get_contents($photoBytea);
-            }
-            
-            // Encode to base64
-            $base64 = base64_encode($photoBytea);
-            return "<img src='data:image/jpeg;base64,$base64' alt='Photo'>";
-        } else {
-            return "<span>No photo</span>";
-        }
-    }
-}
+// ================== PHOTO HELPER ==================
+require_once __DIR__ . '/photo-helper.php'; // <- Include Option 1 helper
 
 // GET filters
 $search = isset($_GET['search']) ? trim($_GET['search']) : '';
@@ -69,6 +53,29 @@ $stmt = $pdo->prepare($sql);
 $stmt->execute($params);
 $result = $stmt->fetchAll();
 
+// AJAX request: only output table rows
+if(isset($_GET['ajax'])){
+    foreach($result as $row): ?>
+        <tr>
+            <td><?= htmlspecialchars($row['lrn']) ?></td>
+            <td><?= htmlspecialchars($row['full_name']) ?></td>
+            <td><?= htmlspecialchars($row['id_number']) ?></td>
+            <td><?= htmlspecialchars(getLevelDisplay($row)) ?></td>
+            <td><?= htmlspecialchars($row['home_address']) ?></td>
+            <td><?= htmlspecialchars($row['guardian_name']) ?></td>
+            <td><?= htmlspecialchars($row['guardian_contact']) ?></td>
+            <td><?= displayPhoto($row['photo']) ?></td>
+            <td><?= $row['created_at'] ? date('Y-m-d H:i:s', strtotime($row['created_at'])) : '-' ?></td>
+            <td><?= $row['restored_at'] ? date('Y-m-d H:i:s', strtotime($row['restored_at'])) : '-' ?></td>
+            <td class="actions">
+                <a href="update.php?id=<?= $row['id'] ?>"><button class="edit-btn">Edit</button></a>
+                <a href="print.php?id=<?= $row['id'] ?>"><button class="edit-btn" style="background:#3498db;">🖨️ Print</button></a>
+            </td>
+        </tr>
+    <?php endforeach;
+    exit;
+}
+
 // Theme
 $themeClass = (isset($_COOKIE['theme']) && $_COOKIE['theme']=='dark') ? 'dark' : '';
 
@@ -80,7 +87,7 @@ $currentParams = [
     'course' => $course
 ];
 
-// Build filter links (clear unrelated filters when clicking a level)
+// Build filter links
 function buildLink($params, $typeValue='', $type='') {
     if ($type && $typeValue !== '') {
         $params[$type] = $typeValue;
@@ -93,6 +100,13 @@ function buildLink($params, $typeValue='', $type='') {
         }
     }
     return '?' . http_build_query($params);
+}
+
+function getLevelDisplay($row) {
+    if (!empty($row['grade'])) return $row['grade'];
+    if (!empty($row['strand'])) return $row['strand'];
+    if (!empty($row['course'])) return $row['course'];
+    return '';
 }
 
 // Filter options
@@ -154,7 +168,6 @@ img { width:70px; height:90px; object-fit:cover; border-radius:6px; border:2px s
     <div>
         <h2>ID System</h2>
         <a href="index.php">🏠 Dashboard</a>
-        <a href="print-id.php">🖨️ Print</a>
         <a href="records.php" class="active">📑 Records</a>
         <a href="archive.php">📁 Archive</a>
         <a href="logout.php">📤 Logout</a>
@@ -166,7 +179,7 @@ img { width:70px; height:90px; object-fit:cover; border-radius:6px; border:2px s
     <div class="topbar"><span>Manage Records</span></div>
     <div class="container">
         <div class="card">
-            <!-- Filters -->
+            <!-- Filters and Search -->
             <div class="filters">
                 <!-- Junior High -->
                 <div class="dropdown">
@@ -177,7 +190,6 @@ img { width:70px; height:90px; object-fit:cover; border-radius:6px; border:2px s
                         <?php endforeach; ?>
                     </div>
                 </div>
-
                 <!-- Senior High -->
                 <div class="dropdown">
                     <button class="dropbtn <?= in_array($strand,$seniorStrands)?'active':'' ?>">Senior High</button>
@@ -187,7 +199,6 @@ img { width:70px; height:90px; object-fit:cover; border-radius:6px; border:2px s
                         <?php endforeach; ?>
                     </div>
                 </div>
-
                 <!-- College -->
                 <div class="dropdown">
                     <button class="dropbtn <?= in_array($course,$courses)?'active':'' ?>">College</button>
@@ -197,14 +208,12 @@ img { width:70px; height:90px; object-fit:cover; border-radius:6px; border:2px s
                         <?php endforeach; ?>
                     </div>
                 </div>
-
                 <!-- Reset -->
                 <div class="dropdown">
                     <a href="records.php"><button class="dropbtn">Reset Filters</button></a>
                 </div>
             </div>
 
-            <!-- Search -->
             <form method="GET" class="search-box">
                 <input type="text" name="search" placeholder="Search LRN, Name, ID..." value="<?= htmlspecialchars($search) ?>">
                 <button type="submit">Search</button>
@@ -223,6 +232,7 @@ img { width:70px; height:90px; object-fit:cover; border-radius:6px; border:2px s
                         <th>Contact</th>
                         <th>Photo</th>
                         <th>Registered At</th>
+                        <th>Restored At</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
@@ -233,32 +243,30 @@ img { width:70px; height:90px; object-fit:cover; border-radius:6px; border:2px s
                             <td><?= htmlspecialchars($row['lrn']) ?></td>
                             <td><?= htmlspecialchars($row['full_name']) ?></td>
                             <td><?= htmlspecialchars($row['id_number']) ?></td>
-                            <td>
-                                <?php
-                                echo htmlspecialchars(
-                                    !empty($row['grade']) ? $row['grade'] :
-                                    (!empty($row['strand']) ? $row['strand'] :
-                                    (!empty($row['course']) ? $row['course'] : ''))
-                                );
-                                    ?>
-
-                            </td>
+                            <td><?= htmlspecialchars(getLevelDisplay($row)) ?></td>
                             <td><?= htmlspecialchars($row['home_address']) ?></td>
                             <td><?= htmlspecialchars($row['guardian_name']) ?></td>
                             <td><?= htmlspecialchars($row['guardian_contact']) ?></td>
                             <td>
                                 <?php
-                                    echo displayPhoto($row['upload_photo']);
+                                    $photoPath = $row['photo'] ?? '';
+                                    if (empty($photoPath) || !file_exists(__DIR__ . '/../uploads/' . $photoPath)) {
+                                        echo '<img src="../uploads/default.png" alt="No Photo">';
+                                    } else {
+                                        echo displayPhoto($photoPath);
+                                    }
                                 ?>
                             </td>
-                            <td><?= htmlspecialchars($row['created_at']) ?></td>
+                            <td><?= $row['created_at'] ? date('Y-m-d H:i:s', strtotime($row['created_at'])) : '-' ?></td>
+                            <td><?= $row['restored_at'] ? date('Y-m-d H:i:s', strtotime($row['restored_at'])) : '-' ?></td>
                             <td class="actions">
                                 <a href="update.php?id=<?= $row['id'] ?>"><button class="edit-btn">Edit</button></a>
+                                <a href="print.php?id=<?= $row['id'] ?>"><button class="edit-btn" style="background:#3498db;">🖨️ Print</button></a>
                             </td>
                         </tr>
                     <?php endforeach; ?>
                 <?php else: ?>
-                    <tr><td colspan="10" class="no-record">No records found.</td></tr>
+                    <tr><td colspan="11" class="no-record">No records found.</td></tr>
                 <?php endif; ?>
                 </tbody>
             </table>
@@ -267,5 +275,26 @@ img { width:70px; height:90px; object-fit:cover; border-radius:6px; border:2px s
 </div>
 
 <script src="../theme.js"></script>
+
+<!-- Live auto-refresh table every 3 seconds -->
+<script>
+function fetchRecords() {
+    fetch('records.php?ajax=1<?= $search ? "&search=" . urlencode($search) : "" ?><?= $grade ? "&grade=" . urlencode($grade) : "" ?><?= $strand ? "&strand=" . urlencode($strand) : "" ?><?= $course ? "&course=" . urlencode($course) : "" ?>')
+    .then(res => res.text())
+    .then(html => {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        const tbody = doc.querySelector('tbody');
+        if(tbody){
+            document.querySelector('tbody').innerHTML = tbody.innerHTML;
+        }
+    })
+    .catch(err => console.error(err));
+}
+
+// Refresh every 3 seconds
+setInterval(fetchRecords, 3000);
+</script>
+
 </body>
 </html>

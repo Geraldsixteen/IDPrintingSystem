@@ -1,4 +1,4 @@
-<?php  
+<?php
 require_once __DIR__ . '/admin-auth.php';
 
 if (!isset($_SESSION['admin_id'])) {
@@ -8,76 +8,84 @@ if (!isset($_SESSION['admin_id'])) {
 
 require_once __DIR__ . '/../config/database.php';
 
+// ================== PHOTO HELPER ==================
+require_once __DIR__ . '/photo-helper.php'; // <- Option 1 helper
+
+
+// ================= INITIALIZE =================
 $msg = '';
 $formData = [
     'lrn'=>'', 'full_name'=>'', 'id_number'=>'', 'grade'=>'', 
     'strand'=>'', 'course'=>'', 'home_address'=>'', 
-    'guardian_name'=>'', 'guardian_contact'=>'', 'upload_photo'=>''
+    'guardian_name'=>'', 'guardian_contact'=>'', 'photo'=>null
 ];
 
 if (!isset($_GET['id'])) die("No record ID specified.");
 $id = intval($_GET['id']);
 
+// Fetch record
 $stmt = $pdo->prepare("SELECT * FROM register WHERE id = :id");
 $stmt->execute(['id' => $id]);
-$formData = $stmt->fetch();
+$formData = $stmt->fetch(PDO::FETCH_ASSOC);
 if (!$formData) die("Record not found.");
 
+// Upload folder
+$uploadDir = __DIR__ . '/uploads/';
+if (!is_dir($uploadDir)) mkdir($uploadDir, 0777, true);
+
+$currentPhoto = $formData['photo'] ?? null;
+
+// ================= HANDLE FORM POST =================
 if ($_SERVER['REQUEST_METHOD']==='POST') {
 
+    // Sanitize input
     $fields = ['lrn','full_name','id_number','grade','strand','course','home_address','guardian_name','guardian_contact'];
     foreach ($fields as $key) {
         $formData[$key] = trim($_POST[$key] ?? '');
     }
 
-    // ================= FIX GRADE / STRAND / COURSE =================
-
-// Detect which one user actually selected
-$selected = '';
-
-if (!empty($_POST['grade']))   $selected = 'grade';
-if (!empty($_POST['strand'])) $selected = 'strand';
-if (!empty($_POST['course'])) $selected = 'course';
-
-// Reset all first
-$formData['grade']  = '';
-$formData['strand'] = '';
-$formData['course'] = '';
-
-// Apply only the selected value
-if ($selected === 'grade') {
-    $formData['grade'] = $_POST['grade'];
-}
-
-if ($selected === 'strand') {
-    $formData['strand'] = $_POST['strand'];
-}
-
-if ($selected === 'course') {
-    $formData['course'] = $_POST['course'];
-}
-
-// =============================================================
-
-    // ===============================================================================
-
-    if (isset($_FILES['upload_photo']) && $_FILES['upload_photo']['error']===0){
-        $allowed=['jpg','jpeg','png','gif'];
-        $ext=strtolower(pathinfo($_FILES['upload_photo']['name'],PATHINFO_EXTENSION));
-        if(in_array($ext,$allowed)){
-            $upload_dir='../uploads/';
-            if(!is_dir($upload_dir)) mkdir($upload_dir,0755,true);
-            $new_photo=time().'_'.basename($_FILES['upload_photo']['name']);
-            if(move_uploaded_file($_FILES['upload_photo']['tmp_name'],$upload_dir.$new_photo)){
-                if(!empty($formData['upload_photo']) && file_exists($upload_dir.$formData['upload_photo'])){
-                    unlink($upload_dir.$formData['upload_photo']);
-                }
-                $formData['upload_photo']=$new_photo;
-            } else $msg="Failed to upload photo.";
-        } else $msg="Invalid file type.";
+    // Handle level selection (grade/strand/course)
+    if (!empty($_POST['level'])) {
+        list($type, $value) = explode(':', $_POST['level']);
+        $formData['grade'] = $formData['strand'] = $formData['course'] = '';
+        $formData[$type] = $value;
     }
 
-    if ($msg===''){
+    // ================= PHOTO HANDLING =================
+    if (!empty($_FILES['photo']['tmp_name'])) {
+        $imageInfo = getimagesize($_FILES['photo']['tmp_name']);
+        if ($imageInfo === false) {
+            $msg = "Invalid image.";
+        } else {
+            $allowed = ['image/jpeg','image/png','image/gif'];
+            if (!in_array($imageInfo['mime'], $allowed)) {
+                $msg = "Only JPG, PNG, GIF allowed.";
+            } elseif ($_FILES['photo']['size'] > 3*1024*1024) {
+                $msg = "Max 3MB.";
+            } else {
+                // Unique filename: ID_timestamp.ext
+                $ext = pathinfo($_FILES['photo']['name'], PATHINFO_EXTENSION);
+                $filename = $id . '_' . time() . '.' . $ext;
+                $destPath = $uploadDir . $filename;
+
+                if (move_uploaded_file($_FILES['photo']['tmp_name'], $destPath)) {
+                    // Delete old photo
+                    if (!empty($currentPhoto)) {
+                        $oldPath = $uploadDir . $currentPhoto;
+                        if (file_exists($oldPath)) unlink($oldPath);
+                    }
+                    $formData['photo'] = $filename;
+                } else {
+                    $msg = "Failed to upload photo.";
+                }
+            }
+        }
+    } else {
+        $formData['photo'] = $currentPhoto;
+    }
+
+    // ================= UPDATE DATABASE =================
+    if ($msg === '') {
         $stmtUpd = $pdo->prepare("
             UPDATE register SET
                 lrn = :lrn,
@@ -89,28 +97,28 @@ if ($selected === 'course') {
                 home_address = :home_address,
                 guardian_name = :guardian_name,
                 guardian_contact = :guardian_contact,
-                upload_photo = :upload_photo
+                photo = :photo
             WHERE id = :id
         ");
-
-        $success = $stmtUpd->execute([
-            'lrn' => $formData['lrn'],
-            'full_name' => $formData['full_name'],
-            'id_number' => $formData['id_number'],
-            'grade' => $formData['grade'],
-            'strand' => $formData['strand'],
-            'course' => $formData['course'],
-            'home_address' => $formData['home_address'],
-            'guardian_name' => $formData['guardian_name'],
-            'guardian_contact' => $formData['guardian_contact'],
-            'upload_photo' => $formData['upload_photo'],
-            'id' => $id
+        $stmtUpd->execute([
+            ':lrn' => $formData['lrn'],
+            ':full_name' => $formData['full_name'],
+            ':id_number' => $formData['id_number'],
+            ':grade' => $formData['grade'],
+            ':strand' => $formData['strand'],
+            ':course' => $formData['course'],
+            ':home_address' => $formData['home_address'],
+            ':guardian_name' => $formData['guardian_name'],
+            ':guardian_contact' => $formData['guardian_contact'],
+            ':photo' => $formData['photo'],
+            ':id' => $id
         ]);
 
-        $msg = $success ? "Record updated successfully!" : "Database error!";
+        $msg = "Record updated successfully!";
     }
 }
 
+// ================= THEME =================
 $themeClass = (isset($_COOKIE['theme']) && $_COOKIE['theme']=='dark') ? 'dark' : '';
 ?>
 
@@ -131,52 +139,28 @@ body { font-family:"Segoe UI", Arial, sans-serif; background:#c9dfff; display:fl
 .card::-webkit-scrollbar { width:6px; }
 .card::-webkit-scrollbar-thumb { background:#3549a3; border-radius:3px; }
 body.dark .card { background: #1e1e1e; color:#eaeaea; }
-body.dark .topbar { background:#111; border-bottom:1px solid white; color:#fff; }
-label{ display:block; margin:12px 0 6px; font-weight:600; }
+body.dark .topbar { background:#111; border-bottom:1px solid white; color:#fff; transition:0.3s; }
+label{ display:block; margin:12px 0 6px; font-weight:600; transition:0.3s; }
 input, select, button { padding:12px; width:100%; margin-bottom:15px; border:1px solid #ccc; border-radius:6px; font-size:15px; transition:0.3s; }
 input:focus, select:focus{ border-color:#3549a3; outline:none; box-shadow:0 0 6px rgba(53,73,163,0.2); }
+body.dark input, body.dark select { background:#2c2c2c; color:#eaeaea; border:1px solid #555; }
 button{ background:#3549a3; color:white; border:none; cursor:pointer; font-weight:600; transition:0.3s; border-radius:25px; }
 button:hover{ background:#2d3a80; }
 .current-photo{ max-width:150px; height:auto; margin-top:10px; border-radius:4px; border:1px solid #ccc; }
 .message{text-align:center;padding:10px;margin-bottom:10px;border-radius:5px;font-weight:600;}
 .success{background:#2ecc71;color:#fff;}
 .error{background:#e74c3c;color:#fff;}
-body.dark .toggle-mode{ background:#3549a3; color:#fff; }
-body.dark .toggle-mode:hover{ background:#2a3a80; }
 </style>
+<script src="../theme.js"></script>
 <script>
 function previewImage(input){
     const preview=document.getElementById('photoPreview');
     if(input.files && input.files[0]){
         const reader=new FileReader();
         reader.onload=e=>preview.src=e.target.result;
-        reader.readAsDataURL(input.files[0]);
+        reader.readAsDataURL(input.files[0]);   
         preview.style.display='block';
     }
-}
-function toggleMode(){
-    const isDark=document.body.classList.toggle('dark');
-    document.cookie="theme="+(isDark?"dark":"light")+"; path=/";
-    document.getElementById('toggleIcon').textContent = isDark ? '☀ Light' : '🌙 Dark';
-}
-(function(){
-    const theme=document.cookie.split('; ').find(row=>row.startsWith('theme='))?.split('=')[1];
-    if(theme==='dark') document.body.classList.add('dark');
-})();
-let toggleIndex=0;
-function cycleField(){
-    const gradeField=document.getElementById('gradeField');
-    const strandField=document.getElementById('strandField');
-    const courseField=document.getElementById('courseField');
-    gradeField.style.display='none';
-    strandField.style.display='none';
-    courseField.style.display='none';
-    const fields=['grade','strand','course'];
-    const current=fields[toggleIndex % fields.length];
-    if(current==='grade') gradeField.style.display='block';
-    if(current==='strand') strandField.style.display='block';
-    if(current==='course') courseField.style.display='block';
-    toggleIndex++;
 }
 </script>
 </head>
@@ -185,8 +169,7 @@ function cycleField(){
 <div class="sidebar">
     <div>
         <h2>ID System</h2>
-        <a href="layout.php">🏠 Dashboard</a>
-        <a href="print-id.php">🖨️ Print</a>
+        <a href="index.php">🏠 Dashboard</a>
         <a href="records.php">📑 Records</a>
         <a href="archive.php">📁 Archive</a>
         <a href="logout.php">📤 Logout</a>
@@ -209,37 +192,24 @@ function cycleField(){
                 <label>ID Number</label>
                 <input type="text" name="id_number" value="<?= htmlspecialchars($formData['id_number']) ?>" required>
 
-                <button type="button" onclick="cycleField()">Toggle: Grade / Strand / Course</button>
-
-                <div id="gradeField" style="display:none;">
-                    <label>Grade Level</label>
-                    <select name="grade">
-                        <option value="" disabled>-- Select Grade --</option>
+                <label>Grade / Strand / Course</label>
+                <select name="level">
+                    <optgroup label="Grades">
                         <?php foreach(['Grade 7','Grade 8','Grade 9','Grade 10'] as $g): ?>
-                        <option value="<?= $g ?>" <?= $formData['grade']==$g?'selected':'' ?>><?= $g ?></option>
+                        <option value="grade:<?= $g ?>" <?= $formData['grade']==$g?'selected':'' ?>><?= $g ?></option>
                         <?php endforeach; ?>
-                    </select>
-                </div>
-
-                <div id="strandField" style="display:none;">
-                    <label>Strand</label>
-                    <select name="strand">
-                        <option value="">-- Select Strand --</option>
+                    </optgroup>
+                    <optgroup label="Strands">
                         <?php foreach(['HUMMS','ABM','STEM','GAS','ICT'] as $s): ?>
-                        <option value="<?= $s ?>" <?= $formData['strand']==$s?'selected':'' ?>><?= $s ?></option>
+                        <option value="strand:<?= $s ?>" <?= $formData['strand']==$s?'selected':'' ?>><?= $s ?></option>
                         <?php endforeach; ?>
-                    </select>
-                </div>
-
-                <div id="courseField" style="display:none;">
-                    <label>Course</label>
-                    <select name="course">
-                        <option value="">-- Select Course --</option>
+                    </optgroup>
+                    <optgroup label="Courses">
                         <?php foreach(['BSIT','BSBA','BSHM','BEED','BSED'] as $c): ?>
-                        <option value="<?= $c ?>" <?= $formData['course']==$c?'selected':'' ?>><?= $c ?></option>
+                        <option value="course:<?= $c ?>" <?= $formData['course']==$c?'selected':'' ?>><?= $c ?></option>
                         <?php endforeach; ?>
-                    </select>
-                </div>
+                    </optgroup>
+                </select>
 
                 <label>Home Address</label>
                 <input type="text" name="home_address" value="<?= htmlspecialchars($formData['home_address']) ?>" required>
@@ -249,18 +219,17 @@ function cycleField(){
                 <input type="text" name="guardian_contact" value="<?= htmlspecialchars($formData['guardian_contact']) ?>" required>
 
                 <label>Upload Photo (Leave empty to keep current)</label>
-                <input type="file" name="upload_photo" accept="image/*" onchange="previewImage(this)">
-                <?php if(!empty($formData['upload_photo'])): ?>
-                    <img src="../uploads/<?= htmlspecialchars($formData['upload_photo']) ?>" id="photoPreview" class="current-photo">
-                <?php else: ?>
-                    <img id="photoPreview" class="current-photo" style="display:none;">
-                <?php endif; ?>
+                <input type="file" name="photo" accept="image/*" onchange="previewImage(this)">
+                <img id="photoPreview" class="current-photo" 
+                src="<?= displayPhoto($formData['photo'], true) ?: '../uploads/default.png' ?>" 
+                style="<?= empty($formData['photo']) ? 'display:none;' : '' ?>">
+
 
                 <button type="submit">Update Record</button>
             </form>
         </div>
     </div>
 </div>
-<script src="../theme.js"></script>
+
 </body>
 </html>

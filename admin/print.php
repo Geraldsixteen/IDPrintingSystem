@@ -1,133 +1,63 @@
 <?php 
 require_once __DIR__ . '/admin-auth.php';
+require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/photo-helper.php'; // <-- include photo helper
 
-/* ================= SECURITY ================= */
 if (!isset($_SESSION['admin_id'])) {
     header("Location: login.php");
     exit;
 }
 
-// ================== PostgreSQL Connection ==================
-// Include your existing database connection
-require_once __DIR__ . '/../config/database.php';
-
-// ==========================================================
-
-/* ================= VALIDATION ================= */
-if (!isset($_POST['id_number']) || empty($_POST['id_number'])) {
-    die("<h3 style='text-align:center;color:red;'>No ID selected.</h3>");
+// Get student ID from URL (GET)
+if (isset($_GET['id'])) {
+    $studentId = intval($_GET['id']);
+} else {
+    die("No student selected."); // stops page if ID not provided
 }
 
-$id_number = trim($_POST['id_number']);
-
-/* ================= FETCH RECORD ================= */
-$stmt = $pdo->prepare("SELECT * FROM register WHERE id_number = :id_number LIMIT 1");
-$stmt->execute(['id_number' => $id_number]);
+// Fetch the student data from register
+$stmt = $pdo->prepare("SELECT * FROM register WHERE id = :id LIMIT 1");
+$stmt->execute(['id' => $studentId]);
 $row = $stmt->fetch();
 
 if (!$row) {
-    die("<h3 style='text-align:center;color:red;'>Record not found.</h3>");
+    die("Student not found.");
 }
 
-/* ================= HELPER ================= */
+// ================= HELPER FUNCTION =================
 function studentLevel($row) {
     if (!empty($row['grade']))  return "Grade: " . htmlspecialchars($row['grade']);
     if (!empty($row['strand'])) return "Strand: " . htmlspecialchars($row['strand']);
     if (!empty($row['course'])) return "Course: " . htmlspecialchars($row['course']);
     return "";
 }
-
-/* ================= AUTO ARCHIVE ================= */
-// Move record to archive after printing
-function archiveStudent($pdo, $student) {
-    // Insert into archive
-    $stmtInsert = $pdo->prepare("
-        INSERT INTO archive
-        (lrn, full_name, id_number, grade, strand, course, home_address, guardian_name, guardian_contact, upload_photo, printed_at, status)
-        VALUES (:lrn, :full_name, :id_number, :grade, :strand, :course, :home_address, :guardian_name, :guardian_contact, :upload_photo, NOW(), 'Not Released')
-    ");
-    $stmtInsert->execute([
-        'lrn' => $student['lrn'],
-        'full_name' => $student['full_name'],
-        'id_number' => $student['id_number'],
-        'grade' => $student['grade'],
-        'strand' => $student['strand'],
-        'course' => $student['course'],
-        'home_address' => $student['home_address'],
-        'guardian_name' => $student['guardian_name'],
-        'guardian_contact' => $student['guardian_contact'],
-        'upload_photo' => $student['upload_photo']
-    ]);
-
-    // Delete from register
-    $stmtDel = $pdo->prepare("DELETE FROM register WHERE id_number = :id_number");
-    $stmtDel->execute(['id_number' => $student['id_number']]);
-}
 ?>
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <title>Print Student ID</title>
-
 <style>
-body{
-    margin:0;
-    background:#fff;
-    font-family:"Segoe UI", Arial, sans-serif;
-}
-
-.wrapper{
-    display:flex;
-    justify-content:center;
-    gap:40px;
-    margin-top:30px;
-}
-
-.card{
-    width:360px;
-    height:540px;
-    border-radius:12px;
-    box-shadow:0 6px 18px rgba(0,0,0,.15);
-    padding:20px;
-    box-sizing:border-box;
-}
-
-.front{text-align:center;}
-
-.photo{
-    width:180px;
-    height:180px;
-    object-fit:cover;
-    border:2px solid #000;
-    border-radius:8px;
-    margin:20px auto;
-}
-
+body{margin:0;background:#fff;font-family:"Segoe UI", Arial, sans-serif;}
+.wrapper{display:flex;justify-content:center;gap:40px;margin-top:30px;}
+.card{width:360px;height:540px;border-radius:12px;box-shadow:0 6px 18px rgba(0,0,0,.15);padding:20px;box-sizing:border-box;}
+.front, .back{text-align:center;}
+.photo{width:180px;height:180px;object-fit:cover;border:2px solid #000;border-radius:8px;margin:20px auto;}
 .info{font-weight:600;margin:4px 0;}
-
-.back{font-size:13px;}
-
-.box{
-    border:1px solid #ccc;
-    border-radius:6px;
-    padding:8px;
-    margin-bottom:10px;
-}
-
-.sign{
-    display:flex;
-    justify-content:space-between;
-    margin-top:40px;
-}
-
-@media print{
-    body{margin:0;}
-}
+.back{font-size:13px; text-align:left; padding:15px;}
+.box{border:1px solid #ccc;border-radius:6px;padding:8px;margin-bottom:10px;}
+.box strong{display:block;margin-bottom:3px;}
+.sign{display:flex;justify-content:space-between;margin-top:30px;font-weight:600;}
+h3{text-align:center;margin-bottom:10px;}
+@media print{body{margin:0;}}
+#printBtn{display:block;margin:20px auto;padding:10px 20px;font-size:16px;background:#3549a3;color:white;border:none;border-radius:8px;cursor:pointer;}
+#printBtn:hover{background:#2d3a80;}
 </style>
 </head>
-
 <body>
+
+<button id="printBtn">🖨️ Print ID</button>
 
 <div class="wrapper">
 
@@ -137,36 +67,27 @@ body{
         <div>CDLB</div>
         <div>Los Baños, Laguna</div>
 
-        <img src="../uploads/<?= htmlspecialchars($row['upload_photo']) ?>" class="photo">
+        <!-- Use photo helper -->
+        <div class="photo">
+            <?= displayPhoto($row['photo']) ?>
+        </div>
 
         <div class="info">LRN: <?= htmlspecialchars($row['lrn']) ?></div>
-        <div class="info" style="font-size:20px;">
-            <?= htmlspecialchars($row['full_name']) ?>
-        </div>
+        <div class="info" style="font-size:20px;"><?= htmlspecialchars($row['full_name']) ?></div>
         <div class="info">ID: <?= htmlspecialchars($row['id_number']) ?></div>
         <div class="info"><?= studentLevel($row) ?></div>
     </div>
 
     <!-- BACK -->
     <div class="card back">
-        <h3 style="text-align:center;">Student Details</h3>
+        <h3>Student Details</h3>
 
-        <div class="box">
-            <strong>Address:</strong><br>
-            <?= htmlspecialchars($row['home_address']) ?>
-        </div>
+        <div class="box"><strong>Address:</strong><?= htmlspecialchars($row['home_address']) ?></div>
+        <div class="box"><strong>Guardian:</strong><?= htmlspecialchars($row['guardian_name']) ?></div>
+        <div class="box"><strong>Contact:</strong><?= htmlspecialchars($row['guardian_contact']) ?></div>
+        <div class="box"><strong>Level:</strong><?= studentLevel($row) ?></div>
 
-        <div class="box">
-            <strong>Guardian:</strong><br>
-            <?= htmlspecialchars($row['guardian_name']) ?>
-        </div>
-
-        <div class="box">
-            <strong>Contact:</strong><br>
-            <?= htmlspecialchars($row['guardian_contact']) ?>
-        </div>
-
-        <div style="font-size:11px;">
+        <div class="box" style="font-size:11px;">
             <strong>TERMS</strong>
             <ol>
                 <li>Non-transferable</li>
@@ -175,36 +96,36 @@ body{
             </ol>
         </div>
 
-        <div class="sign">
-            <div>Registrar</div>
-            <div>Director</div>
-        </div>
+        <div class="sign"><div>Registrar</div><div>Director</div></div>
     </div>
 
 </div>
 
 <script>
-window.onload = function(){
-    // Print first
+document.getElementById('printBtn').addEventListener('click', function(){
+    // Open print dialog
     window.print();
 
-    // Then archive the student record via PHP
-    setTimeout(function(){
-        fetch("<?= $_SERVER['PHP_SELF'] ?>", {
-            method: "POST",
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: "archive=1&id_number=<?= urlencode($row['id_number']) ?>"
-        }).then(()=>console.log("Student archived"));
-    }, 500);
-};
+    // After print, confirm archiving
+    if(confirm("Did you complete printing? Click OK to archive the student.")){
+        fetch("archive_stud.php", {
+        method: "POST",
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: "id=<?= $row['id'] ?>",
+        credentials: "same-origin"
+    })
+    .then(response => response.text())
+    .then(data => {
+        if(data.trim() === "ok"){
+            alert("Student archived successfully!");
+            window.location.href = "archive.php";
+        } else {
+            alert("Archiving failed: " + data);
+        }
+    })
+    .catch(err => alert("Error: " + err));
+}});
 </script>
 
 </body>
 </html>
-
-<?php
-/* ================= ARCHIVE PROCESS ================= */
-if (isset($_POST['archive']) && $_POST['archive'] == 1 && !empty($_POST['id_number'])) {
-    archiveStudent($pdo, $row);
-}
-?>
