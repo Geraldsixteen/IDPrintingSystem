@@ -271,10 +271,20 @@ img { width:70px; height:90px; object-fit:cover; border-radius:6px; border:2px s
 
 <!-- Live auto-refresh table every 3 seconds -->
 <script>
+// Live auto-refresh table every 3 seconds
 function fetchRecords() {
-    fetch('records.php?ajax=1<?= $search ? "&search=" . urlencode($search) : "" ?><?= $grade ? "&grade=" . urlencode($grade) : "" ?><?= $strand ? "&strand=" . urlencode($strand) : "" ?><?= $course ? "&course=" . urlencode($course) : "" ?>')
+    const params = new URLSearchParams({
+        ajax: 1,
+        search: '<?= htmlspecialchars($search) ?>',
+        grade: '<?= htmlspecialchars($grade) ?>',
+        strand: '<?= htmlspecialchars($strand) ?>',
+        course: '<?= htmlspecialchars($course) ?>'
+    });
+
+    fetch('records.php?' + params.toString())
     .then(res => res.text())
     .then(html => {
+        // Replace tbody directly
         const parser = new DOMParser();
         const doc = parser.parseFromString(html, 'text/html');
         const tbody = doc.querySelector('tbody');
@@ -288,6 +298,7 @@ function fetchRecords() {
 // Refresh every 3 seconds
 setInterval(fetchRecords, 3000);
 </script>
+
 
 </body>
 </html>
