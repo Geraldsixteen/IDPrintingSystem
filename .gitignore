@@ -1,5 +1,5 @@
 # Ignore env files
-OnlineRegistration/.env
+OnlineRegistration/
 
 # Ignore OS files
 .DS_Store
@@ -11,3 +11,6 @@ LocalAdminSystem/*.log
 
 # Ignore Docker generated files
 docker-compose.override.yml
+
+LocalAdminSystem/Config/database.php
+
