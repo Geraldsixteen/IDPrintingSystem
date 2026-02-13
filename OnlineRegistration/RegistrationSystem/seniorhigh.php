@@ -125,7 +125,7 @@ if (!empty($_FILES['photo']['tmp_name'])) {
 <body>
 <div class="main">
     <div class="topbar">
-        <img src="../cdlb.png" alt="Logo">
+        <img src="/cdlb.png/" alt="Logo">
         <h3>Senior High Student ID Registration</h3>
     </div>
 
