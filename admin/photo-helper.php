@@ -12,7 +12,7 @@ function displayPhoto($filename){
     }
 
     // Server path (for file existence check)
-    $filePath = __DIR__ . '/../public/uploads/' . $filename;
+    $filePath = dirname(__DIR__,2) . '/public/uploads/' . $filename;
 
     // Browser-accessible URL (works both for normal page load and AJAX)
     $url = '../public/uploads/' . $filename;
