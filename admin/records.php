@@ -269,7 +269,6 @@ img { width:70px; height:90px; object-fit:cover; border-radius:6px; border:2px s
 
 <script src="../theme.js"></script>
 
-<!-- Live auto-refresh table every 3 seconds -->
 <script>
 function fetchRecords() {
     const params = new URLSearchParams({
@@ -283,18 +282,32 @@ function fetchRecords() {
     fetch('records.php?' + params.toString())
     .then(res => res.text())
     .then(html => {
-        // Replace tbody directly
+        // Parse the returned HTML
         const parser = new DOMParser();
         const doc = parser.parseFromString(html, 'text/html');
         const newTbody = doc.querySelector('tbody');
         if(newTbody){
-            document.querySelector('tbody').innerHTML = newTbody.innerHTML;
+            const tbody = document.querySelector('tbody');
+            tbody.innerHTML = newTbody.innerHTML;
+
+            // Fix image src paths for AJAX-loaded rows
+            tbody.querySelectorAll('img').forEach(img => {
+                const src = img.getAttribute('src');
+
+                // If src is just the filename or relative, prepend your uploads folder
+                if (!src.includes('/Id-Printing-System/public/uploads/')) {
+                    img.src = '/Id-Printing-System/public/uploads/' + src.split('/').pop();
+                }
+            });
         }
     })
     .catch(err => console.error(err));
 }
 
+// Optional: auto-refresh every 3 seconds
+setInterval(fetchRecords, 3000);
 </script>
+
 
 
 </body>
