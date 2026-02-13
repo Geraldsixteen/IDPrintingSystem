@@ -6,7 +6,7 @@ RUN apt-get update && apt-get install -y libpq-dev unzip zip \
 # Copy folders from OnlineRegistration build context
 COPY RegistrationSystem/ /var/www/html/
 COPY Config/ /var/www/html/Config/
-COPY public/ /var/www/html/public/
+COPY Public/ /var/www/html/Public/
 
 WORKDIR /var/www/html
 
