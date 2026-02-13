@@ -10,23 +10,14 @@ function displayPhoto($filename){
         return $placeholder;
     }
 
-    // REAL server path (go up 2 levels)
-    $uploadDir = dirname(__DIR__, 2) . '/public/uploads/';
+    // REAL server path
+    $uploadDir = $_SERVER['DOCUMENT_ROOT'] . '/Id-Printing-System/public/uploads/';
 
-    // Browser URL
-    $url = '/public/uploads/' . $filename;
+    // REAL browser URL
+    $url = '/Id-Printing-System/public/uploads/' . $filename;
 
     if(file_exists($uploadDir . $filename)){
         return "<img src='".htmlspecialchars($url)."' alt='Photo'
-                style='width:70px;height:90px;object-fit:cover;border:2px solid #000;border-radius:6px;'>";
-    }
-
-    // Default fallback
-    $defaultPath = dirname(__DIR__, 2) . '/public/uploads/default.png';
-    $defaultUrl  = '/public/uploads/default.png';
-
-    if(file_exists($defaultPath)){
-        return "<img src='".htmlspecialchars($defaultUrl)."' alt='No Photo'
                 style='width:70px;height:90px;object-fit:cover;border:2px solid #000;border-radius:6px;'>";
     }
 

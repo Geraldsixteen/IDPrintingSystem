@@ -289,14 +289,6 @@ function fetchRecords() {
         const newTbody = doc.querySelector('tbody');
         if(newTbody){
             document.querySelector('tbody').innerHTML = newTbody.innerHTML;
-
-            // Fix relative image paths after AJAX load
-            document.querySelectorAll('tbody img').forEach(img => {
-                if(img.src.startsWith(window.location.origin + '/IDPrintingSystem/')){
-                    img.src = img.src.replace('/IDPrintingSystem/', '/'); 
-                    // Adjust if your public folder is at project root
-                }
-            });
         }
     })
     .catch(err => console.error(err));
