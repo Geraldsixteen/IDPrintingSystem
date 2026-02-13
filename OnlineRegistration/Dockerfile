@@ -1,18 +1,19 @@
 FROM php:8.2-apache
 
-# Install system dependencies
+# Install PostgreSQL PDO support
 RUN apt-get update && apt-get install -y \
     libpq-dev \
-    git \
-    unzip \
-    zip \
     && docker-php-ext-install pdo pdo_pgsql
 
-# Copy your app
-COPY RegistrationSystem/ /var/www/html/
+# Copy Admin system into web root
+COPY LocalAdminSystem/ /var/www/html/
 
-# Set working directory
+# Ensure Apache serves index.php
+RUN echo "DirectoryIndex index.php" >> /etc/apache2/apache2.conf
+
+# Optional: enable rewrite if you have routing
+RUN a2enmod rewrite
+
 WORKDIR /var/www/html/
 
-# Expose port (Render uses 10000 by default)
 EXPOSE 10000
