@@ -30,7 +30,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
-    // ===== Handle image upload =====
 if (!empty($_FILES['photo']['tmp_name'])) {
     $fileTmp = $_FILES['photo']['tmp_name'];
     $fileName = basename($_FILES['photo']['name']);
@@ -49,27 +48,24 @@ if (!empty($_FILES['photo']['tmp_name'])) {
         // Clean filename
         $photo_filename = time() . '_' . preg_replace("/[^a-zA-Z0-9_\-\.]/", "", $fileName);
 
-        // Absolute path to your existing Public/Uploads folder
+        // === 1️⃣ Save to ephemeral folder ===
         $uploadDir = __DIR__ . '/Public/Uploads/';
-
-        if (!is_dir($uploadDir)) {
-            mkdir($uploadDir, 0777, true); // just in case
-        }
-
+        if (!is_dir($uploadDir)) mkdir($uploadDir, 0777, true);
         $targetPath = $uploadDir . $photo_filename;
-
         if (!move_uploaded_file($fileTmp, $targetPath)) {
             $response['msg'] = "Failed to upload photo.";
-            $response['debug'] = [
-                'target' => $targetPath,
-                'exists' => file_exists($uploadDir),
-                'writable' => is_writable($uploadDir),
-                'error' => $_FILES['photo']['error']
-            ];
             echo json_encode($response);
             exit;
         }
 
+        // === 2️⃣ Auto backup to local system ===
+        $backupDir = 'C:/LocalAdminSystem/UploadsBackup/';
+        if (!is_dir($backupDir)) mkdir($backupDir, 0777, true);
+        $backupPath = $backupDir . $photo_filename;
+        if (!copy($targetPath, $backupPath)) {
+            // Optional: log but don’t block registration
+            error_log("Failed to backup photo to local folder: $backupPath");
+        }
     }
 }
 
