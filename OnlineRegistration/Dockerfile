@@ -1,10 +1,18 @@
 FROM php:8.2-apache
 
-# Copy all files from OnlineRegistration into Apache root
-COPY . /var/www/html/
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    libpq-dev \
+    git \
+    unzip \
+    zip \
+    && docker-php-ext-install pdo pdo_pgsql
 
-# Enable PostgreSQL PDO
-RUN docker-php-ext-install pdo pdo_pgsql
+# Copy your app
+COPY RegistrationSystem/ /var/www/html/
 
-# Expose the port Render uses
+# Set working directory
+WORKDIR /var/www/html/
+
+# Expose port (Render uses 10000 by default)
 EXPOSE 10000
