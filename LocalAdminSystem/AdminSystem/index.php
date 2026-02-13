@@ -139,12 +139,6 @@ Dashboard
 <div class="container">
 
 <div class="card">
-<h3>Print ID</h3>
-<p>Generate and print professional ID cards instantly.</p>
-<a href="print-id.php" class="btn">Go to Print</a>
-</div>
-
-<div class="card">
 <h3>Manage Records</h3>
 <p>View and update all registered ID records.</p>
 <a href="records.php" class="btn">View Records</a>
