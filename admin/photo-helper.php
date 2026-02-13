@@ -1,25 +1,30 @@
 <?php
+
 function displayPhoto($filename){
 
-    $placeholder = "<div style='width:70px;height:90px;display:flex;align-items:center;justify-content:center;
-                    background:#eee;color:#555;font-weight:600;border:2px solid #000;border-radius:6px;margin:0 auto;'>
-                    No Photo
-                    </div>";
-
     if(empty($filename)){
-        return $placeholder;
+        return "<div style='width:70px;height:90px;border:2px solid #000;display:flex;align-items:center;justify-content:center'>No Photo</div>";
     }
 
-    // REAL server path
-    $uploadDir = $_SERVER['DOCUMENT_ROOT'] . '/Id-Printing-System/public/uploads/';
+    /*
+    Your structure:
+
+    htdocs/
+      Id-Printing-System/
+        public/uploads/
+        students/
+        IDPrintingSystem/admin/  <-- YOU ARE HERE
+    */
+
+    // REAL filesystem path (go UP 2 folders, then public/uploads)
+    $realPath = dirname(__DIR__,2) . '/public/uploads/' . $filename;
 
     // REAL browser URL
     $url = '/Id-Printing-System/public/uploads/' . $filename;
 
-    if(file_exists($uploadDir . $filename)){
-        return "<img src='".htmlspecialchars($url)."' alt='Photo'
-                style='width:70px;height:90px;object-fit:cover;border:2px solid #000;border-radius:6px;'>";
+    if(file_exists($realPath)){
+        return "<img src='$url' style='width:70px;height:90px;object-fit:cover;border:2px solid #000'>";
     }
 
-    return $placeholder;
+    return "<div style='width:70px;height:90px;border:2px solid red;display:flex;align-items:center;justify-content:center'>Missing</div>";
 }
