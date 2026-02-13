@@ -49,7 +49,7 @@ if (!empty($_FILES['photo']['tmp_name'])) {
         $photo_filename = time() . '_' . preg_replace("/[^a-zA-Z0-9_\-\.]/", "", $fileName);
 
         // === 1️⃣ Save to ephemeral folder ===
-        $uploadDir = __DIR__ . '/../Public/Uploads/'; // move outside of the PHP folder if needed
+        $uploadDir = __DIR__ . '/../../Public/Uploads/'; // go up 2 levels to OnlineRegistration
         if (!is_dir($uploadDir)) mkdir($uploadDir, 0777, true);
         $targetPath = $uploadDir . $photo_filename;
         if (!move_uploaded_file($fileTmp, $targetPath)) {
