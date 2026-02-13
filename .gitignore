@@ -1,5 +1,5 @@
-# Ignore env files
-OnlineRegistration/
+# Ignore only env files
+OnlineRegistration/.env
 
 # Ignore OS files
 .DS_Store
@@ -9,5 +9,8 @@ Thumbs.db
 LocalAdminSystem/tmp/
 LocalAdminSystem/*.log
 
-LocalAdminSystem/Config/database.php
+# Ignore Docker generated files
+docker-compose.override.yml
 
+# Ignore sensitive database credentials
+LocalAdminSystem/Config/database.php
