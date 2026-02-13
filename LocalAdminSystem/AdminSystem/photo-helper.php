@@ -5,12 +5,12 @@ function displayPhoto($filename){
         return "<div style='width:70px;height:90px;border:2px solid #000;display:flex;align-items:center;justify-content:center'>No Photo</div>";
     }
 
-    $ephemeralPath = __DIR__ . '/../Public/Uploads/' . $filename;
+    $ephemeralPath = __DIR__ . '/../../OnlineRegistration/Public/Uploads/' . $filename;
     $backupPath    = 'C:/LocalAdminSystem/UploadsBackup/' . $filename;
 
     // Prefer ephemeral folder
     if(file_exists($ephemeralPath)){
-        $url = '/Public/Uploads/' . $filename;
+        $url = '/IDPrintingSystem/OnlineRegistration/Public/Uploads/' . $filename;
         return "<img src='$url' style='width:70px;height:90px;object-fit:cover;border:2px solid #000'>";
     } 
     // Fallback to local backup
