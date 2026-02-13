@@ -50,7 +50,7 @@ if (!empty($_FILES['photo']['tmp_name'])) {
         $photo_filename = time() . '_' . preg_replace("/[^a-zA-Z0-9_\-\.]/", "", $fileName);
 
         // Absolute path to your existing Public/Uploads folder
-        $uploadDir = realpath(__DIR__ . '/../Public/Uploads') . '/';
+        $uploadDir = __DIR__ . '/Public/Uploads/';
 
         if (!is_dir($uploadDir)) {
             mkdir($uploadDir, 0777, true); // just in case
