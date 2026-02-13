@@ -1,5 +1,13 @@
-# On master branch
-OnlineRegistration/
+# Ignore env files
+OnlineRegistration/.env
 
-# On main branch
-LocalAdminSystem/
+# Ignore OS files
+.DS_Store
+Thumbs.db
+
+# Ignore XAMPP temporary files
+LocalAdminSystem/tmp/
+LocalAdminSystem/*.log
+
+# Ignore Docker generated files
+docker-compose.override.yml
