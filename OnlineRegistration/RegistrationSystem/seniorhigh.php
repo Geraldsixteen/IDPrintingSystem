@@ -60,9 +60,16 @@ if (!empty($_FILES['photo']['tmp_name'])) {
 
         if (!move_uploaded_file($fileTmp, $targetPath)) {
             $response['msg'] = "Failed to upload photo.";
+            $response['debug'] = [
+                'target' => $targetPath,
+                'exists' => file_exists($uploadDir),
+                'writable' => is_writable($uploadDir),
+                'error' => $_FILES['photo']['error']
+            ];
             echo json_encode($response);
             exit;
         }
+
     }
 }
 
@@ -125,7 +132,7 @@ if (!empty($_FILES['photo']['tmp_name'])) {
 <body>
 <div class="main">
     <div class="topbar">
-        <img src="/cdlb.png/" alt="Logo">
+        <img src="../cdlb.png/" alt="Logo">
         <h3>Senior High Student ID Registration</h3>
     </div>
 
