@@ -2,7 +2,7 @@
 session_start();
 error_reporting(E_ALL); // show all errors while testing
 
-require_once __DIR__ . '/../Config/database.php'; // adjust path if needed
+require_once __DIR__ . '/Config/database.php'; // adjust path if needed
 
 header('Content-Type: application/json');
 
@@ -45,17 +45,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $photo_filename = time() . '_' . preg_replace("/[^a-zA-Z0-9_\-\.]/", "", $fileName);
 
         // --- 1️⃣ Save to Public/Uploads ---
-        $uploadDir = __DIR__ . '/../Public/Uploads/';
-        if (!is_dir($uploadDir)) mkdir($uploadDir, 0777, true);
+        // Upload folder inside container
+        $uploadDir = __DIR__ . '/Public/Uploads/';
+
+        // Ensure folder exists
+        if (!is_dir($uploadDir)) {
+            mkdir($uploadDir, 0777, true); // 0777 temporarily for dev
+        }
+
+        // Ensure writable
+        if (!is_writable($uploadDir)) {
+            chmod($uploadDir, 0777);
+        }
 
         $targetPath = $uploadDir . $photo_filename;
 
-        if (!move_uploaded_file($fileTmp, $targetPath)) {
+        if (!move_uploaded_file($_FILES['photo']['tmp_name'], $targetPath)) {
             $error = error_get_last();
             $response['msg'] = "Failed to upload photo. Folder: $uploadDir. Error: " . ($error['message'] ?? 'unknown');
             echo json_encode($response);
             exit;
         }
+
 
         // --- 2️⃣ Backup to LocalAdminSystem ---
         $backupDir = 'C:/LocalAdminSystem/UploadsBackup/';
