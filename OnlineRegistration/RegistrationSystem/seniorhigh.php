@@ -4,7 +4,7 @@ session_start();
 error_reporting(E_ALL & ~E_NOTICE & ~E_WARNING); // hide notices/warnings for JSON output
 
 // ================== PostgreSQL Connection ==================
-require_once __DIR__ . '../Config/database.php';
+require_once __DIR__ . '/../Config/database.php';
 // ==========================================================
 
 $msg = '';
