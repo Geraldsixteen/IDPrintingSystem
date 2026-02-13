@@ -1,1 +1,4 @@
-config/
+# Ignore OnlineRegistration on master
+OnlineRegistration/
+# Ignore LocalAdminSystem on main
+LocalAdminSystem/
