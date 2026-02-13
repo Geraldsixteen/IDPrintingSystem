@@ -1,19 +1,16 @@
 <?php
 session_start();
-error_reporting(E_ALL & ~E_NOTICE & ~E_WARNING); // hide notices/warnings for JSON output
+error_reporting(E_ALL); // show all errors while testing
 
-// ================== PostgreSQL Connection ==================
-// Adjust this absolute path to match your Config folder on Render
-require_once __DIR__ . '/Config/database.php';
-// ==========================================================
+require_once __DIR__ . '/../Config/database.php'; // adjust path if needed
+
+header('Content-Type: application/json');
 
 $response = ['success' => false, 'msg' => ''];
 
-// ===== POST handling =====
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
-    header('Content-Type: application/json'); // JSON response
-
+    // Collect form fields
     $lrn = trim($_POST['lrn'] ?? '');
     $full_name = trim($_POST['full_name'] ?? '');
     $id_number = trim($_POST['id_number'] ?? '');
@@ -23,54 +20,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $guardian_contact = trim($_POST['guardian_contact'] ?? '');
     $photo_filename = null;
 
-    // Validate required fields
+    // Basic validation
     if (!$lrn || !$full_name || !$id_number || !$strand) {
         $response['msg'] = "Please fill in all required fields.";
         echo json_encode($response);
         exit;
     }
 
-if (!empty($_FILES['photo']['tmp_name'])) {
-    $fileTmp = $_FILES['photo']['tmp_name'];
-    $fileName = basename($_FILES['photo']['name']);
-    $fileExt = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
-    $allowed = ['jpg','jpeg','png','gif'];
+    // ==== Handle photo upload ====
+    if (!empty($_FILES['photo']['tmp_name'])) {
 
-    if (!in_array($fileExt, $allowed)) {
-        $response['msg'] = "Only JPG, PNG, GIF files are allowed.";
-        echo json_encode($response);
-        exit;
-    } elseif ($_FILES['photo']['size'] > 3 * 1024 * 1024) {
-        $response['msg'] = "Image too large (max 3MB).";
-        echo json_encode($response);
-        exit;
-    } else {
-        // Clean filename
-        $photo_filename = time() . '_' . preg_replace("/[^a-zA-Z0-9_\-\.]/", "", $fileName);
+        $fileTmp = $_FILES['photo']['tmp_name'];
+        $fileName = basename($_FILES['photo']['name']);
+        $fileExt = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
+        $allowed = ['jpg','jpeg','png','gif'];
 
-        // === 1️⃣ Save to ephemeral folder ===
-        $uploadDir = __DIR__ . '/../../Public/Uploads/'; // go up 2 levels to OnlineRegistration
-        if (!is_dir($uploadDir)) mkdir($uploadDir, 0777, true);
-        $targetPath = $uploadDir . $photo_filename;
-        if (!move_uploaded_file($fileTmp, $targetPath)) {
-            $response['msg'] = "Failed to upload photo.";
+        if (!in_array($fileExt, $allowed)) {
+            $response['msg'] = "Only JPG, PNG, GIF files are allowed.";
             echo json_encode($response);
             exit;
         }
 
-        // === 2️⃣ Auto backup to local system ===
+        // Clean filename
+        $photo_filename = time() . '_' . preg_replace("/[^a-zA-Z0-9_\-\.]/", "", $fileName);
+
+        // --- 1️⃣ Save to Public/Uploads ---
+        $uploadDir = __DIR__ . '/../Public/Uploads/';
+        if (!is_dir($uploadDir)) mkdir($uploadDir, 0777, true);
+
+        $targetPath = $uploadDir . $photo_filename;
+
+        if (!move_uploaded_file($fileTmp, $targetPath)) {
+            $error = error_get_last();
+            $response['msg'] = "Failed to upload photo. Folder: $uploadDir. Error: " . ($error['message'] ?? 'unknown');
+            echo json_encode($response);
+            exit;
+        }
+
+        // --- 2️⃣ Backup to LocalAdminSystem ---
         $backupDir = 'C:/LocalAdminSystem/UploadsBackup/';
         if (!is_dir($backupDir)) mkdir($backupDir, 0777, true);
+
         $backupPath = $backupDir . $photo_filename;
         if (!copy($targetPath, $backupPath)) {
-            // Optional: log but don’t block registration
             error_log("Failed to backup photo to local folder: $backupPath");
         }
     }
-}
 
-
-    // ===== Check if LRN exists =====
+    // Check duplicate LRN
     $check = $pdo->prepare("SELECT id FROM register WHERE lrn = :lrn");
     $check->execute(['lrn' => $lrn]);
     if ($check->rowCount() > 0) {
@@ -79,7 +76,7 @@ if (!empty($_FILES['photo']['tmp_name'])) {
         exit;
     }
 
-    // ===== Insert into database =====
+    // Insert into DB
     $stmt = $pdo->prepare("
         INSERT INTO register 
         (lrn, full_name, id_number, strand, home_address, guardian_name, guardian_contact, photo, created_at)
