@@ -1,18 +1,15 @@
+# Use official PHP + Apache image
 FROM php:8.2-apache
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    libpq-dev \
-    git \
-    unzip \
-    zip \
+# Install PostgreSQL PHP extension
+RUN apt-get update && apt-get install -y libpq-dev git unzip zip \
     && docker-php-ext-install pdo pdo_pgsql
 
-# Copy your app
-COPY RegistrationSystem/ /var/www/html/
+# Copy files in current context (RegistrationSystem/) to /var/www/html/
+COPY . /var/www/html/
 
 # Set working directory
 WORKDIR /var/www/html/
 
-# Expose port (Render uses 10000 by default)
-EXPOSE 10000
+# Expose port 80 (default for Apache)
+EXPOSE 80
