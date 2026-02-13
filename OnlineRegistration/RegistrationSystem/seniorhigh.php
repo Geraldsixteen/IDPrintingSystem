@@ -1,18 +1,19 @@
-<?php    
+<?php
 session_start();
+error_reporting(E_ALL & ~E_NOTICE & ~E_WARNING); // hide notices/warnings for JSON output
+
 // ================== PostgreSQL Connection ==================
+// Adjust this absolute path to match your Config folder on Render
 require_once __DIR__ . '/../Config/database.php';
 // ==========================================================
 
-$msg = '';
 $response = ['success' => false, 'msg' => ''];
 
-// Only handle POST
+// ===== POST handling =====
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     header('Content-Type: application/json'); // JSON response
 
-    // Get POST variables
     $lrn = trim($_POST['lrn'] ?? '');
     $full_name = trim($_POST['full_name'] ?? '');
     $id_number = trim($_POST['id_number'] ?? '');
@@ -23,13 +24,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $photo_filename = null;
 
     // Validate required fields
-    if (empty($lrn) || empty($full_name) || empty($id_number) || empty($strand)) {
+    if (!$lrn || !$full_name || !$id_number || !$strand) {
         $response['msg'] = "Please fill in all required fields.";
         echo json_encode($response);
         exit;
     }
 
-    // Handle uploaded photo
+    // ===== Handle image upload =====
 if (!empty($_FILES['photo']['tmp_name'])) {
     $fileTmp = $_FILES['photo']['tmp_name'];
     $fileName = basename($_FILES['photo']['name']);
@@ -45,54 +46,42 @@ if (!empty($_FILES['photo']['tmp_name'])) {
         echo json_encode($response);
         exit;
     } else {
-
+        // Clean filename
         $photo_filename = time() . '_' . preg_replace("/[^a-zA-Z0-9_\-\.]/", "", $fileName);
 
-        // ABSOLUTE path from htdocs
-        $uploadDir = $_SERVER['DOCUMENT_ROOT'] . '/Id-Printing-System/public/uploads/';
+        // Absolute path to your existing Public/Uploads folder
+        $uploadDir = realpath(__DIR__ . '/../Public/Uploads') . '/';
 
         if (!is_dir($uploadDir)) {
-            mkdir($uploadDir, 0777, true);
+            mkdir($uploadDir, 0777, true); // just in case
         }
 
         $targetPath = $uploadDir . $photo_filename;
 
         if (!move_uploaded_file($fileTmp, $targetPath)) {
-
             $response['msg'] = "Failed to upload photo.";
-
-            $response['debug'] = [
-                'uploadDir' => $uploadDir,
-                'targetPath' => $targetPath,
-                'tmp' => $fileTmp,
-                'uploaded' => is_uploaded_file($fileTmp),
-                'error' => $_FILES['photo']['error'],
-                'writable' => is_writable($uploadDir)
-            ];
-
             echo json_encode($response);
             exit;
         }
     }
 }
 
-    // Check if LRN exists
+
+    // ===== Check if LRN exists =====
     $check = $pdo->prepare("SELECT id FROM register WHERE lrn = :lrn");
     $check->execute(['lrn' => $lrn]);
-
     if ($check->rowCount() > 0) {
         $response['msg'] = 'This LRN is already registered!';
         echo json_encode($response);
         exit;
     }
 
-    // Insert into database
+    // ===== Insert into database =====
     $stmt = $pdo->prepare("
         INSERT INTO register 
         (lrn, full_name, id_number, strand, home_address, guardian_name, guardian_contact, photo, created_at)
         VALUES (:lrn, :full_name, :id_number, :strand, :home_address, :guardian_name, :guardian_contact, :photo, NOW())
     ");
-
     $stmt->execute([
         ':lrn' => $lrn,
         ':full_name' => $full_name,
@@ -122,7 +111,9 @@ if (!empty($_FILES['photo']['tmp_name'])) {
     echo json_encode($response);
     exit;
 }
+
 ?>
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -143,13 +134,13 @@ if (!empty($_FILES['photo']['tmp_name'])) {
             <h3>Senior High Student Registration</h3>
             <form id="reg-form" action="seniorhigh.php" method="POST" enctype="multipart/form-data">
                 <label>LRN</label>
-                <input type="text" name="lrn" id="lrn" required>
+                <input type="text" name="lrn" required>
                 <label>Full Name</label>
-                <input type="text" name="full_name" id="full_name" required>
+                <input type="text" name="full_name" required>
                 <label>ID Number</label>
-                <input type="text" name="id_number" id="id_number" required>
+                <input type="text" name="id_number" required>
                 <label>Strand</label>
-                <select name="strand" id="strand" required>
+                <select name="strand" required>
                     <option value="">-- Select Strand --</option>
                     <option value="STEM">STEM</option>
                     <option value="HUMMS">HUMMS</option>
@@ -158,13 +149,13 @@ if (!empty($_FILES['photo']['tmp_name'])) {
                     <option value="ICT">ICT</option>
                 </select>
                 <label>Home Address</label>
-                <input type="text" name="home_address" id="home_address" required>
+                <input type="text" name="home_address" required>
                 <label>Guardian's Name</label>
-                <input type="text" name="guardian_name" id="guardian_name" required>
+                <input type="text" name="guardian_name" required>
                 <label>Guardian's Contact</label>
-                <input type="text" name="guardian_contact" id="guardian_contact" required>
+                <input type="text" name="guardian_contact" required>
                 <label>Upload Photo</label>
-                <input type="file" name="photo" id="photo" accept="image/*" required>
+                <input type="file" name="photo" accept="image/*" required>
                 <center><button type="submit" class="submit">Register</button></center>
             </form>
         </div>
@@ -182,11 +173,11 @@ form.addEventListener('submit', function(e){
         method: 'POST',
         body: formData
     })
-    .then(res => res.text()) // first get text
+    .then(res => res.text())
     .then(text => {
         let data;
         try {
-            data = JSON.parse(text); // try parse JSON
+            data = JSON.parse(text);
         } catch(err){
             console.error('Invalid JSON response:', text);
             alert('Server error, check console.');
@@ -201,7 +192,6 @@ form.addEventListener('submit', function(e){
     })
     .catch(err => console.error(err));
 });
-
 </script>
 </body>
 </html>
