@@ -4,7 +4,7 @@ error_reporting(E_ALL & ~E_NOTICE & ~E_WARNING); // hide notices/warnings for JS
 
 // ================== PostgreSQL Connection ==================
 // Adjust this absolute path to match your Config folder on Render
-require_once __DIR__ . '/../Config/database.php';
+require_once __DIR__ . '/Config/database.php';
 // ==========================================================
 
 $response = ['success' => false, 'msg' => ''];
