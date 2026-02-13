@@ -4,11 +4,11 @@ error_reporting(E_ALL); // show all errors while testing
 
 require_once __DIR__ . '/Config/database.php'; // fixed path
 
-header('Content-Type: application/json');
-
 $response = ['success' => false, 'msg' => ''];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+
+    header('Content-Type: application/json');
 
     // Collect form fields
     $lrn = trim($_POST['lrn'] ?? '');
