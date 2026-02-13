@@ -6,21 +6,13 @@ function displayPhoto($filename){
         return "<div style='width:70px;height:90px;border:2px solid #000;display:flex;align-items:center;justify-content:center'>No Photo</div>";
     }
 
-    /*
-    Your structure:
+    // Docker layout:
+    // /var/www/html/Public/Uploads/
 
-    htdocs/
-      Id-Printing-System/
-        public/uploads/
-        students/
-        IDPrintingSystem/admin/  <-- YOU ARE HERE
-    */
+    $realPath = '/var/www/html/Public/Uploads/' . $filename;
 
-    // REAL filesystem path (go UP 2 folders, then public/uploads)
-    $realPath = dirname(__DIR__,2) . '/Public/Uploads/' . $filename;
-
-    // REAL browser URL
-    $url = '/Id-Printing-System/public/uploads/' . $filename;
+    // Browser URL
+    $url = '/Public/Uploads/' . $filename;
 
     if(file_exists($realPath)){
         return "<img src='$url' style='width:70px;height:90px;object-fit:cover;border:2px solid #000'>";
@@ -28,3 +20,4 @@ function displayPhoto($filename){
 
     return "<div style='width:70px;height:90px;border:2px solid red;display:flex;align-items:center;justify-content:center'>Missing</div>";
 }
+

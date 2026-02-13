@@ -285,16 +285,6 @@ function fetchRecords() {
         if(newTbody){
             const tbody = document.querySelector('tbody');
             tbody.innerHTML = newTbody.innerHTML;
-
-            // Fix image src paths for AJAX-loaded rows
-            tbody.querySelectorAll('img').forEach(img => {
-                const src = img.getAttribute('src');
-
-                // If src is just the filename or relative, prepend your uploads folder
-                if (!src.includes('/Id-Printing-System/public/uploads/')) {
-                    img.src = '/Id-Printing-System/public/uploads/' + src.split('/').pop();
-                }
-            });
         }
     })
     .catch(err => console.error(err));
