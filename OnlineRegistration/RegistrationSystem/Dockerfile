@@ -6,7 +6,11 @@ RUN apt-get update && apt-get install -y libpq-dev git unzip zip \
     && docker-php-ext-install pdo pdo_pgsql
 
 # Copy files in current context (RegistrationSystem/) to /var/www/html/
-COPY . /var/www/html/
+# Copy PHP app
+COPY RegistrationSystem/ /var/www/html/
+COPY Config/ /var/www/html/config/
+COPY Public/ /var/www/html/public/
+
 
 # Set working directory
 WORKDIR /var/www/html/
