@@ -14,40 +14,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $guardian_name = trim($_POST['guardian_name'] ?? '');
     $guardian_contact = trim($_POST['guardian_contact'] ?? '');
 
+    // Required fields
     if (!$lrn || !$full_name || !$id_number || !$strand) {
         echo json_encode(['success' => false, 'msg' => 'Please fill in all required fields.']);
         exit;
     }
 
-    // Must upload a photo
-    if (empty($_FILES['photo']['tmp_name']) || !is_uploaded_file($_FILES['photo']['tmp_name'])) {
-        echo json_encode(['success' => false, 'msg' => 'Please upload a photo']);
+    // Check file upload
+    if (!isset($_FILES['photo']) || $_FILES['photo']['error'] !== UPLOAD_ERR_OK) {
+        $errorMsg = isset($_FILES['photo']['error']) ? $_FILES['photo']['error'] : 'No file uploaded';
+        echo json_encode(['success' => false, 'msg' => 'Please upload a photo (Error code: '.$errorMsg.')']);
         exit;
     }
 
     $tmp = $_FILES['photo']['tmp_name'];
     $info = getimagesize($tmp);
     if (!$info) {
-        echo json_encode(['success' => false, 'msg' => 'Invalid image']);
+        echo json_encode(['success' => false, 'msg' => 'Invalid image file']);
         exit;
     }
 
-    // Resize to 300x400
+    // Resize image to 300x400
     $src = imagecreatefromstring(file_get_contents($tmp));
     $dst = imagecreatetruecolor(300, 400);
-    imagecopyresampled($dst, $src, 0,0,0,0, 300,400, imagesx($src), imagesy($src));
+    imagecopyresampled($dst, $src, 0, 0, 0, 0, 300, 400, imagesx($src), imagesy($src));
 
-    // Save photo to memory for blob
+    // Save image to memory for blob
     ob_start();
     imagejpeg($dst, null, 85);
     $photo_blob = ob_get_clean();
     imagedestroy($src);
     imagedestroy($dst);
 
-    // Generate filename
+    // Generate backup filename
     $photo_filename = $lrn . '_' . time() . '.jpg';
 
-    // Backup locally inside AdminSystem/Uploads/
+    // Save backup locally
     $backupDir = __DIR__ . '/../AdminSystem/Uploads/';
     if (!is_dir($backupDir)) mkdir($backupDir, 0777, true);
     file_put_contents($backupDir . $photo_filename, $photo_blob);
@@ -145,13 +147,25 @@ body{margin:0;font-family:"Segoe UI",Arial,sans-serif;background:#f0f4ff;display
 
 <script>
 const form = document.getElementById('reg-form');
-form.addEventListener('submit', function(e){
+form.addEventListener('submit', async function(e){
     e.preventDefault();
+
     const formData = new FormData(form);
 
-    fetch('index.php',{method:'POST',body:formData})
-    .then(res=>res.json())
-    .then(data=>{
+    // Check if file is selected
+    const fileInput = form.querySelector('input[name="photo"]');
+    if(!fileInput.files || fileInput.files.length === 0){
+        alert('Please upload a photo');
+        return;
+    }
+
+    try {
+        const res = await fetch('index.php', {
+            method: 'POST',
+            body: formData
+        });
+        const data = await res.json();
+
         if(data.success){
             const popup = document.createElement('div');
             popup.id='popupMsg';
@@ -160,11 +174,13 @@ form.addEventListener('submit', function(e){
             setTimeout(()=>popup.classList.add('show'),50);
             form.reset();
             setTimeout(()=>{popup.classList.remove('show');setTimeout(()=>popup.remove(),500)},2500);
-        }else{
+        } else {
             alert('Error: '+(data.msg||'Unknown'));
         }
-    })
-    .catch(err=>{console.error(err);alert('Error submitting form.')});
+    } catch(err){
+        console.error(err);
+        alert('Error submitting form: '+err.message);
+    }
 });
 </script>
 </body>
