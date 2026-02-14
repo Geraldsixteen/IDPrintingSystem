@@ -26,54 +26,62 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
-    // ==== Handle photo upload ====
-    $photo_blob = null;
-    $photo_filename = null;
+// ==== Handle photo upload ====
+$photo_blob = null;
+$photo_filename = null;
 
-    if (!empty($_FILES['photo']['tmp_name'])) {
-        $tmp = $_FILES['photo']['tmp_name'];
-        $original = basename($_FILES['photo']['name']);
+if (!empty($_FILES['photo']['tmp_name'])) {
 
-        // Validate image extension
-        $ext = strtolower(pathinfo($original, PATHINFO_EXTENSION));
-        $allowed = ['jpg', 'jpeg', 'png', 'gif'];
-        if (!in_array($ext, $allowed)) {
-            echo json_encode(['success'=>false,'msg'=>'Invalid image type']);
-            exit;
-        }
+    $tmp = $_FILES['photo']['tmp_name'];
 
-        // Read binary for DB
-        $photo_blob = file_get_contents($tmp);
-
-        // === Local Admin Backup ===
-        $localBackupDir = __DIR__ . '/../../LocalAdminSystem/AdminSystem/Uploads/';
-        if (!is_dir($localBackupDir)) mkdir($localBackupDir, 0777, true);
-
-        $photo_filename = $lrn . '_' . time() . '.' . $ext;
-        copy($tmp, $localBackupDir . $photo_filename);
-
-        // === Persistent Render Backup ===
-        $renderBackupDir = '/mnt/data/UploadsBackup/';
-        if (!is_dir($renderBackupDir)) mkdir($renderBackupDir, 0777, true);
-
-        copy($tmp, $renderBackupDir . $photo_filename);
-    }
-
-    // Check duplicate LRN
-    $check = $pdo->prepare("SELECT id FROM register WHERE lrn = :lrn");
-    $check->execute(['lrn' => $lrn]);
-    if ($check->rowCount() > 0) {
-        $response['msg'] = 'This LRN is already registered!';
-        echo json_encode($response);
+    $info = getimagesize($tmp);
+    if(!$info){
+        echo json_encode(['success'=>false,'msg'=>'Invalid image']);
         exit;
     }
+
+    /* resize + compress */
+    $src = imagecreatefromstring(file_get_contents($tmp));
+    $dst = imagecreatetruecolor(300,400);
+    imagecopyresampled($dst,$src,0,0,0,0,300,400,imagesx($src),imagesy($src));
+
+    $photo_filename = $lrn.'_'.time().'.jpg';
+
+    /* Render temp save */
+    $renderBackupDir = '/tmp/uploads/';
+    if(!is_dir($renderBackupDir)) mkdir($renderBackupDir,0777,true);
+
+    $renderPath = $renderBackupDir.$photo_filename;
+    imagejpeg($dst,$renderPath,85);
+
+    imagedestroy($src);
+    imagedestroy($dst);
+
+    $photo_blob = file_get_contents($renderPath);
+
+    /* DUPLICATE IMAGE CHECK */
+    $hash = sha1($photo_blob);
+    $chk = $pdo->prepare("SELECT id FROM register WHERE sha1(photo_blob)=:h");
+    $chk->execute(['h'=>$hash]);
+
+    if($chk->fetch()){
+        echo json_encode(['success'=>false,'msg'=>'Duplicate photo detected']);
+        exit;
+    }
+
+    /* LOCAL ADMIN BACKUP */
+    $localBackupDir = __DIR__.'/../../LocalAdminSystem/AdminSystem/Uploads/';
+    if(!is_dir($localBackupDir)) mkdir($localBackupDir,0777,true);
+    file_put_contents($localBackupDir.$photo_filename,$photo_blob);
+}
+
 
     // Insert into DB
     try {
         $stmt = $pdo->prepare("
             INSERT INTO register 
-            (lrn, full_name, id_number, strand, home_address, guardian_name, guardian_contact, photo_blob, created_at)
-            VALUES (:lrn, :full_name, :id_number, :strand, :home_address, :guardian_name, :guardian_contact, :photo_blob, NOW())
+            (lrn, full_name, id_number, strand, home_address, guardian_name, guardian_contact, photo, photo_blob, created_at)
+            VALUES (:lrn, :full_name, :id_number, :strand, :home_address, :guardian_name, :guardian_contact, :photo, :photo_blob, NOW())
         ");
         $stmt->bindParam(':lrn', $lrn);
         $stmt->bindParam(':full_name', $full_name);
@@ -82,6 +90,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->bindParam(':home_address', $home_address);
         $stmt->bindParam(':guardian_name', $guardian_name);
         $stmt->bindParam(':guardian_contact', $guardian_contact);
+        $stmt->bindParam(':photo',$photo_filename);
         $stmt->bindParam(':photo_blob', $photo_blob, PDO::PARAM_LOB);
 
         $stmt->execute();

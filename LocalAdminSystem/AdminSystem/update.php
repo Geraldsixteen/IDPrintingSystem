@@ -8,115 +8,128 @@ if (!isset($_SESSION['admin_id'])) {
     exit;
 }
 
-// ================= INITIALIZE =================
 $msg = '';
-$formData = [
-    'lrn'=>'', 'full_name'=>'', 'id_number'=>'', 'grade'=>'', 
-    'strand'=>'', 'course'=>'', 'home_address'=>'', 
-    'guardian_name'=>'', 'guardian_contact'=>'', 'photo'=>null
-];
 
 if (!isset($_GET['id'])) die("No record ID specified.");
 $id = intval($_GET['id']);
 
-// Fetch record
-$stmt = $pdo->prepare("SELECT * FROM register WHERE id = :id");
-$stmt->execute(['id' => $id]);
+/* FETCH RECORD */
+$stmt = $pdo->prepare("SELECT * FROM register WHERE id=:id");
+$stmt->execute(['id'=>$id]);
 $formData = $stmt->fetch(PDO::FETCH_ASSOC);
-if (!$formData) die("Record not found.");
+if(!$formData) die("Record not found.");
 
-// Upload folder
-$uploadDir = __DIR__ . '/uploads/';
-if (!is_dir($uploadDir)) mkdir($uploadDir, 0777, true);
+$currentPhoto = $formData['photo'];
+$currentBlob  = $formData['photo_blob'];
 
-$currentPhoto = $formData['photo'] ?? null;
+/* Upload folder */
+$uploadDir = __DIR__.'/uploads/';
+if(!is_dir($uploadDir)) mkdir($uploadDir,0777,true);
 
-// ================= HANDLE FORM POST =================
-if ($_SERVER['REQUEST_METHOD']==='POST') {
+/* FORM SUBMIT */
+if($_SERVER['REQUEST_METHOD']==='POST'){
 
-    // Sanitize input
-    $fields = ['lrn','full_name','id_number','grade','strand','course','home_address','guardian_name','guardian_contact'];
-    foreach ($fields as $key) {
-        $formData[$key] = trim($_POST[$key] ?? '');
+    $fields=['lrn','full_name','id_number','grade','strand','course','home_address','guardian_name','guardian_contact'];
+    foreach($fields as $f){
+        $formData[$f]=trim($_POST[$f]??'');
     }
 
-    // Handle level selection (grade/strand/course)
-    if (!empty($_POST['level'])) {
-        list($type, $value) = explode(':', $_POST['level']);
-        $formData['grade'] = $formData['strand'] = $formData['course'] = '';
-        $formData[$type] = $value;
+    if(!empty($_POST['level'])){
+        list($type,$value)=explode(':',$_POST['level']);
+        $formData['grade']=$formData['strand']=$formData['course']='';
+        $formData[$type]=$value;
     }
 
-    // ================= PHOTO HANDLING =================
-    if (!empty($_FILES['photo']['tmp_name'])) {
-        $imageInfo = getimagesize($_FILES['photo']['tmp_name']);
-        if ($imageInfo === false) {
-            $msg = "Invalid image.";
-        } else {
-            $allowed = ['image/jpeg','image/png','image/gif'];
-            if (!in_array($imageInfo['mime'], $allowed)) {
-                $msg = "Only JPG, PNG, GIF allowed.";
-            } elseif ($_FILES['photo']['size'] > 3*1024*1024) {
-                $msg = "Max 3MB.";
-            } else {
-                // Unique filename: ID_timestamp.ext
-                $ext = pathinfo($_FILES['photo']['name'], PATHINFO_EXTENSION);
-                $filename = $id . '_' . time() . '.' . $ext;
-                $destPath = $uploadDir . $filename;
+if(!empty($_FILES['photo']['tmp_name'])){
 
-                if (move_uploaded_file($_FILES['photo']['tmp_name'], $destPath)) {
-                    // Delete old photo
-                    if (!empty($currentPhoto)) {
-                        $oldPath = $uploadDir . $currentPhoto;
-                        if (file_exists($oldPath)) unlink($oldPath);
-                    }
-                    $formData['photo'] = $filename;
-                } else {
-                    $msg = "Failed to upload photo.";
-                }
+    $info=getimagesize($_FILES['photo']['tmp_name']);
+
+    if(!$info){
+        $msg="Invalid image.";
+    }else{
+
+        $ext='jpg';
+        $filename=$id.'_'.time().'.jpg';
+        $dest=$uploadDir.$filename;
+
+        /* Resize + compress */
+        $src=imagecreatefromstring(file_get_contents($_FILES['photo']['tmp_name']));
+        $dst=imagecreatetruecolor(300,400);
+        imagecopyresampled($dst,$src,0,0,0,0,300,400,imagesx($src),imagesy($src));
+        imagejpeg($dst,$dest,85);
+
+        imagedestroy($src);
+        imagedestroy($dst);
+
+        $blob=file_get_contents($dest);
+
+        /* DUPLICATE CHECK */
+        $hash=sha1($blob);
+        $chk=$pdo->prepare("SELECT id FROM register WHERE sha1(photo_blob)=:h AND id!=:id");
+        $chk->execute([':h'=>$hash,':id'=>$id]);
+
+        if($chk->fetch()){
+            unlink($dest);
+            $msg="Duplicate photo detected.";
+        }else{
+
+            if(!empty($currentPhoto)){
+                $old=$uploadDir.$currentPhoto;
+                if(file_exists($old)) unlink($old);
             }
+
+            $formData['photo']=$filename;
+            $formData['photo_blob']=$blob;
         }
-    } else {
-        $formData['photo'] = $currentPhoto;
     }
 
-    // ================= UPDATE DATABASE =================
-    if ($msg === '') {
-        $stmtUpd = $pdo->prepare("
-            UPDATE register SET
-                lrn = :lrn,
-                full_name = :full_name,
-                id_number = :id_number,
-                grade = :grade,
-                strand = :strand,
-                course = :course,
-                home_address = :home_address,
-                guardian_name = :guardian_name,
-                guardian_contact = :guardian_contact,
-                photo = :photo
-            WHERE id = :id
+}else{
+    $formData['photo']=$currentPhoto;
+    $formData['photo_blob']=$currentBlob;
+}
+
+
+    /* UPDATE */
+    if($msg===''){
+
+        $stmt=$pdo->prepare("
+        UPDATE register SET
+            lrn=:lrn,
+            full_name=:full_name,
+            id_number=:id_number,
+            grade=:grade,
+            strand=:strand,
+            course=:course,
+            home_address=:home_address,
+            guardian_name=:guardian_name,
+            guardian_contact=:guardian_contact,
+            photo=:photo,
+            photo_blob=:photo_blob
+        WHERE id=:id
         ");
-        $stmtUpd->execute([
-            ':lrn' => $formData['lrn'],
-            ':full_name' => $formData['full_name'],
-            ':id_number' => $formData['id_number'],
-            ':grade' => $formData['grade'],
-            ':strand' => $formData['strand'],
-            ':course' => $formData['course'],
-            ':home_address' => $formData['home_address'],
-            ':guardian_name' => $formData['guardian_name'],
-            ':guardian_contact' => $formData['guardian_contact'],
-            ':photo' => $formData['photo'],
-            ':id' => $id
+
+        $stmt->execute([
+            ':lrn'=>$formData['lrn'],
+            ':full_name'=>$formData['full_name'],
+            ':id_number'=>$formData['id_number'],
+            ':grade'=>$formData['grade'],
+            ':strand'=>$formData['strand'],
+            ':course'=>$formData['course'],
+            ':home_address'=>$formData['home_address'],
+            ':guardian_name'=>$formData['guardian_name'],
+            ':guardian_contact'=>$formData['guardian_contact'],
+            ':photo'=>$formData['photo'],
+            ':photo_blob'=>$formData['photo_blob'],
+            ':id'=>$id
         ]);
 
-        $msg = "Record updated successfully!";
+        $msg="Record updated successfully!";
     }
 }
 
-// ================= THEME =================
-$themeClass = (isset($_COOKIE['theme']) && $_COOKIE['theme']=='dark') ? 'dark' : '';
+$themeClass=(isset($_COOKIE['theme']) && $_COOKIE['theme']=='dark')?'dark':'';
 ?>
+
 
 <!DOCTYPE html>
 <html lang="en">

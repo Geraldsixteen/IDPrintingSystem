@@ -1,4 +1,4 @@
-<?php         
+<?php
 require_once __DIR__ . '/admin-auth.php';
 require_once __DIR__ . '/../Config/database.php';
 require_once __DIR__ . '/photo-helper.php';
@@ -8,19 +8,19 @@ if (!isset($_SESSION['admin_id'])) {
     exit;
 }
 
-// GET filters
+// ================= GET FILTERS =================
 $search = isset($_GET['search']) ? trim($_GET['search']) : '';
 $grade  = isset($_GET['grade']) ? $_GET['grade'] : '';
 $strand = isset($_GET['strand']) ? $_GET['strand'] : '';
 $course = isset($_GET['course']) ? $_GET['course'] : '';
 
-// Base SQL
+// ================= BUILD SQL =================
 $sql = "SELECT * FROM register WHERE 1=1";
 $params = [];
 
-// Search filter
+// Search filter (using LIKE for MySQL, not ILIKE)
 if (!empty($search)) {
-    $sql .= " AND (lrn ILIKE :search OR full_name ILIKE :search OR id_number ILIKE :search)";
+    $sql .= " AND (lrn LIKE :search OR full_name LIKE :search OR id_number LIKE :search)";
     $params[':search'] = "%$search%";
 }
 
@@ -44,12 +44,11 @@ if (!empty($course)) {
 
 $sql .= " ORDER BY created_at DESC";
 
-// Prepare statement
 $stmt = $pdo->prepare($sql);
 $stmt->execute($params);
-$result = $stmt->fetchAll();
+$result = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-// AJAX request: only output table rows
+// ================= AJAX REQUEST =================
 if(isset($_GET['ajax'])){
     foreach($result as $row): ?>
         <tr>
@@ -60,7 +59,7 @@ if(isset($_GET['ajax'])){
             <td><?= htmlspecialchars($row['home_address']) ?></td>
             <td><?= htmlspecialchars($row['guardian_name']) ?></td>
             <td><?= htmlspecialchars($row['guardian_contact']) ?></td>
-            <td><?= displayPhoto($row['photo']) ?></td>
+            <td><?= displayPhoto($row['photo'] ?? null, $row['photo_blob'] ?? null) ?></td>
             <td><?= $row['created_at'] ? date('Y-m-d H:i:s', strtotime($row['created_at'])) : '-' ?></td>
             <td><?= $row['restored_at'] ? date('Y-m-d H:i:s', strtotime($row['restored_at'])) : '-' ?></td>
             <td class="actions">
@@ -72,7 +71,7 @@ if(isset($_GET['ajax'])){
     exit;
 }
 
-// Theme
+// ================= THEME =================
 $themeClass = (isset($_COOKIE['theme']) && $_COOKIE['theme']=='dark') ? 'dark' : '';
 
 // Current filters
@@ -87,17 +86,14 @@ $currentParams = [
 function buildLink($params, $typeValue='', $type='') {
     if ($type && $typeValue !== '') {
         $params[$type] = $typeValue;
-        if ($type == 'grade') {
-            unset($params['strand'], $params['course']);
-        } else if ($type == 'strand') {
-            unset($params['grade'], $params['course']);
-        } else if ($type == 'course') {
-            unset($params['grade'], $params['strand']);
-        }
+        if ($type == 'grade') unset($params['strand'], $params['course']);
+        elseif ($type == 'strand') unset($params['grade'], $params['course']);
+        elseif ($type == 'course') unset($params['grade'], $params['strand']);
     }
     return '?' . http_build_query($params);
 }
 
+// Display grade/strand/course properly
 function getLevelDisplay($row) {
     if (!empty($row['grade'])) return $row['grade'];
     if (!empty($row['strand'])) return $row['strand'];
@@ -110,6 +106,7 @@ $juniorGrades = ['Grade 7','Grade 8','Grade 9','Grade 10'];
 $seniorStrands = ['HUMMS','ABM','STEM','GAS','ICT'];
 $courses = ['BSIT','BSBA','BSHM','BEED','BSED'];
 ?>
+
 
 <!DOCTYPE html>
 <html lang="en">

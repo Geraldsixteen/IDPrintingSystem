@@ -1,7 +1,8 @@
-<?php
+<?php 
 require_once __DIR__ . '/admin-auth.php';
 require_once __DIR__ . '/../Config/database.php';
 require_once __DIR__ . '/photo-helper.php';
+
 if (!isset($_SESSION['admin_id'])) {
     header("Location: login.php");
     exit;
@@ -13,61 +14,8 @@ $grade  = $_GET['grade'] ?? '';
 $strand = $_GET['strand'] ?? '';
 $course = $_GET['course'] ?? '';
 
-// ================== Restore Record ==================
-$msg = '';
-if (isset($_POST['restore_id'])) {
-    $id = intval($_POST['restore_id']);
-    $stmt = $pdo->prepare("SELECT * FROM archive WHERE id = :id LIMIT 1");
-    $stmt->execute(['id' => $id]);
-    $row = $stmt->fetch();
-
-    if ($row) {
-        $stmtInsert = $pdo->prepare("
-            INSERT INTO register
-            (lrn, full_name, id_number, grade, strand, course, home_address, guardian_name, guardian_contact, photo, created_at, restored_at)
-            VALUES (:lrn, :full_name, :id_number, :grade, :strand, :course, :home_address, :guardian_name, :guardian_contact, :photo, :created_at, NOW())
-        ");
-        $stmtInsert->execute([
-            'lrn' => $row['lrn'],
-            'full_name' => $row['full_name'],
-            'id_number' => $row['id_number'],
-            'grade' => $row['grade'],
-            'strand' => $row['strand'],
-            'course' => $row['course'],
-            'home_address' => $row['home_address'],
-            'guardian_name' => $row['guardian_name'],
-            'guardian_contact' => $row['guardian_contact'],
-            'photo' => $row['photo'],
-            'created_at' => $row['created_at']
-        ]);
-
-        // Delete from archive
-        $stmtDel = $pdo->prepare("DELETE FROM archive WHERE id = :id");
-        $stmtDel->execute(['id' => $id]);
-
-        $msg = 'Record restored successfully.';
-    }
-}
-
-// ================== Toggle Status ==================
-if (isset($_POST['toggle_status'])) {
-    $id = intval($_POST['toggle_status']);
-    $stmt = $pdo->prepare("SELECT status FROM archive WHERE id = :id LIMIT 1");
-    $stmt->execute(['id' => $id]);
-    $row = $stmt->fetch();
-
-    if ($row) {
-        $newStatus = ($row['status'] === 'Released') ? 'Not Released' : 'Released';
-        $releasedAt = ($newStatus === 'Released') ? 'NOW()' : 'NULL';
-
-        $stmtUpd = $pdo->prepare("
-            UPDATE archive
-            SET status = :status, released_at = $releasedAt
-            WHERE id = :id
-        ");
-        $stmtUpd->execute(['status' => $newStatus, 'id' => $id]);
-    }
-}
+// ================== Theme ==================
+$themeClass = ($_COOKIE['theme'] ?? '') === 'dark' ? 'dark' : '';
 
 // ================== Build SQL with Filters ==================
 $sql = "SELECT * FROM archive WHERE 1=1";
@@ -75,22 +23,19 @@ $params = [];
 
 // Search
 if ($search !== '') {
-    $sql .= " AND (lrn ILIKE :search OR full_name ILIKE :search OR id_number ILIKE :search)";
-    $params['search'] = "%$search%";
+    $sql .= " AND (lrn LIKE :search OR full_name LIKE :search OR id_number LIKE :search)";
+    $params[':search'] = "%$search%";
 }
 
 // Grade/Strand/Course filters
-if ($grade !== '')  { $sql .= " AND grade = :grade";   $params['grade'] = $grade; }
-if ($strand !== '') { $sql .= " AND strand = :strand"; $params['strand'] = $strand; }
-if ($course !== '') { $sql .= " AND course = :course"; $params['course'] = $course; }
+if ($grade !== '')  { $sql .= " AND grade = :grade";   $params[':grade'] = $grade; }
+if ($strand !== '') { $sql .= " AND strand = :strand"; $params[':strand'] = $strand; }
+if ($course !== '') { $sql .= " AND course = :course"; $params[':course'] = $course; }
 
 $sql .= " ORDER BY printed_at DESC";
 $stmt = $pdo->prepare($sql);
 $stmt->execute($params);
-$result = $stmt->fetchAll();
-
-// ================== Theme ==================
-$themeClass = ($_COOKIE['theme'] ?? '') === 'dark' ? 'dark' : '';
+$result = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 // ================== Filter Links ==================
 $currentParams = compact('search', 'grade', 'strand', 'course');
@@ -110,6 +55,7 @@ $juniorGrades = ['Grade 7','Grade 8','Grade 9','Grade 10'];
 $seniorStrands = ['HUMMS','ABM','STEM','GAS','ICT'];
 $courses = ['BSIT','BSBA','BSHM','BEED','BSED'];
 ?>
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -118,7 +64,6 @@ $courses = ['BSIT','BSBA','BSHM','BEED','BSED'];
 <title>Archive - ID Printing System</title>
 <link rel="stylesheet" href="../style.css">
 <style>
-/* Your existing CSS */
 *{margin:0;padding:0;box-sizing:border-box;}
 body{font-family:"Segoe UI",Arial,sans-serif;background:#c9dfff;display:flex;min-height:100vh;color:#222;}
 .sidebar a:hover,.sidebar a.active{background:#1f2857;}
@@ -161,6 +106,19 @@ img{width:70px;height:90px;object-fit:cover;border-radius:6px;border:2px solid #
 .dropdown-content a:hover,.dropdown-content a.active{background-color:#002b80;color:white;}
 .dropdown:hover .dropdown-content{display:block;}
 @media(max-width:768px){body{flex-direction:column;}.sidebar{width:100%;flex-direction:row;overflow-x:auto;}.sidebar a{margin:3px 10px;}.card{width:95%;}table{min-width:auto;font-size:12px;}.toggle-mode{height:60px;line-height:40px;margin:10px;white-space:nowrap;}}
+
+/* Your existing CSS plus checkbox & batch buttons */
+.actions button{margin:2px;padding:6px 12px;border:none;border-radius:20px;cursor:pointer;color:white;font-size:13px;font-weight:500;box-shadow:0 2px 5px rgba(0,0,0,0.15);transition:0.2s;}
+.status-btn{background:#3498db;}
+.status-btn:hover{background:#217dbb;}
+.restore-btn{background:#2ecc71;}
+.restore-btn:hover{background:#27ae60;}
+.batch-btn{background:#e67e22;}
+.batch-btn:hover{background:#d35400;}
+.status-badge{padding:5px 10px;border-radius:20px;color:white;font-weight:600;font-size:12px;}
+.status-released{background:#28a745;}
+.status-pending{background:#dc3545;display:inline-block;}
+.checkbox-col{width:30px;}
 </style>
 </head>
 <body class="<?= $themeClass ?>">
@@ -183,6 +141,7 @@ img{width:70px;height:90px;object-fit:cover;border-radius:6px;border:2px solid #
 
             <!-- Filters -->
             <div class="filters">
+                <!-- Grade / Strand / Course Filters (same as before) -->
                 <div class="dropdown">
                     <button class="dropbtn <?= in_array($grade,$juniorGrades)?'active':'' ?>">Junior High</button>
                     <div class="dropdown-content">
@@ -221,10 +180,18 @@ img{width:70px;height:90px;object-fit:cover;border-radius:6px;border:2px solid #
                 <button type="submit">Search</button>
             </form>
 
+            <!-- Batch Action Buttons -->
+            <div style="margin-bottom:10px;">
+                <button class="batch-btn" id="restoreSelected">🔄 Restore Selected</button>
+                <button class="batch-btn" id="toggleSelected">🔁 Toggle Status Selected</button>
+                <button class="batch-btn" id="printSelected">🖨️ Print Selected</button>
+            </div>
+
             <!-- Table -->
             <table>
                 <thead>
                     <tr>
+                        <th class="checkbox-col"><input type="checkbox" id="selectAll"></th>
                         <th>LRN</th>
                         <th>Full Name</th>
                         <th>ID Number</th>
@@ -243,6 +210,7 @@ img{width:70px;height:90px;object-fit:cover;border-radius:6px;border:2px solid #
                     <?php if($result): ?>
                         <?php foreach($result as $row): ?>
                         <tr>
+                            <td><input type="checkbox" class="rowCheckbox" value="<?= $row['id'] ?>"></td>
                             <td><?= htmlspecialchars($row['lrn']) ?></td>
                             <td><?= htmlspecialchars($row['full_name']) ?></td>
                             <td><?= htmlspecialchars($row['id_number']) ?></td>
@@ -250,16 +218,7 @@ img{width:70px;height:90px;object-fit:cover;border-radius:6px;border:2px solid #
                             <td><?= htmlspecialchars($row['home_address']) ?></td>
                             <td><?= htmlspecialchars($row['guardian_name']) ?></td>
                             <td><?= htmlspecialchars($row['guardian_contact']) ?></td>
-                            <td>
-                                <?php
-                                    $photoPath = $row['photo'] ?? '';
-                                    if (empty($photoPath) || !file_exists(__DIR__ . '/../uploads/' . $photoPath)) {
-                                        echo '<img src="../uploads/default.png" alt="No Photo">';
-                                    } else {
-                                        echo displayPhoto($photoPath);
-                                    }
-                                ?>
-                            </td>
+                            <td><?= displayPhoto($row['photo'] ?? null, $row['photo_blob'] ?? null) ?></td>
                             <td><?= $row['printed_at'] ? date('Y-m-d H:i:s', strtotime($row['printed_at'])) : '-' ?></td>
                             <td><span class="status-badge <?= $row['status']=='Released'?'status-released':'status-pending' ?>"><?= htmlspecialchars($row['status']) ?></span></td>
                             <td><?= $row['released_at'] ? date('Y-m-d H:i:s', strtotime($row['released_at'])) : '-' ?></td>
@@ -276,7 +235,7 @@ img{width:70px;height:90px;object-fit:cover;border-radius:6px;border:2px solid #
                         </tr>
                         <?php endforeach; ?>
                     <?php else: ?>
-                        <tr><td colspan="12">No records found.</td></tr>
+                        <tr><td colspan="13">No records found.</td></tr>
                     <?php endif; ?>
                 </tbody>
             </table>
@@ -286,18 +245,56 @@ img{width:70px;height:90px;object-fit:cover;border-radius:6px;border:2px solid #
 </div>
 
 <script src="../theme.js"></script>
-
-<?php if($msg): ?>
-<div id="popupMsg" style="position:fixed;top:20px;right:20px;background:#28a745;color:white;padding:12px 20px;border-radius:8px;font-weight:600;box-shadow:0 4px 10px rgba(0,0,0,.2);z-index:9999;">
-    <?= htmlspecialchars($msg) ?>
-</div>
 <script>
-setTimeout(()=>{
-    document.getElementById('popupMsg').style.opacity="0";
-    setTimeout(()=>document.getElementById('popupMsg').remove(),500);
-},2000);
-</script>
-<?php endif; ?>
+// Select All
+document.getElementById('selectAll').addEventListener('change', function(){
+    const checked = this.checked;
+    document.querySelectorAll('.rowCheckbox').forEach(cb => cb.checked = checked);
+});
 
+// Batch Restore
+document.getElementById('restoreSelected').addEventListener('click', function(){
+    const ids = Array.from(document.querySelectorAll('.rowCheckbox:checked')).map(cb=>cb.value);
+    if(ids.length===0){ alert('Select at least one student'); return; }
+    if(!confirm('Restore selected records?')) return;
+
+    fetch('batch-archive.php', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({action:'restore', ids})
+    })
+    .then(res=>res.json())
+    .then(data=>{
+        alert(data.msg);
+        if(data.success) location.reload();
+    });
+});
+
+// Batch Toggle Status
+document.getElementById('toggleSelected').addEventListener('click', function(){
+    const ids = Array.from(document.querySelectorAll('.rowCheckbox:checked')).map(cb=>cb.value);
+    if(ids.length===0){ alert('Select at least one student'); return; }
+
+    fetch('batch-archive.php', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({action:'toggle', ids})
+    })
+    .then(res=>res.json())
+    .then(data=>{
+        alert(data.msg);
+        if(data.success) location.reload();
+    });
+});
+
+// Batch Print
+document.getElementById('printSelected').addEventListener('click', function(){
+    const ids = Array.from(document.querySelectorAll('.rowCheckbox:checked')).map(cb=>cb.value);
+    if(ids.length===0){ alert('Select at least one student'); return; }
+
+    // Open multiple print windows
+    ids.forEach(id => window.open('print.php?id='+id, '_blank'));
+});
+</script>
 </body>
 </html>
