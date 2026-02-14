@@ -34,9 +34,8 @@ function studentLevel($row) {
     return "";
 }
 
-// ================= USB PRINTER =================
-$defaultPrinter = "L3110 Series"; // default USB printer
-$printers = [$defaultPrinter, "Microsoft Print to PDF", "Other Printer"]; 
+// Default USB printer
+$defaultPrinter = "L3110 Series";
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -55,12 +54,11 @@ body{margin:0;font-family:"Segoe UI",Arial,sans-serif;background:#f4f4f4;}
 .box strong{display:block;margin-bottom:3px;}
 .sign{display:flex;justify-content:space-between;margin-top:30px;font-weight:600;}
 h3{text-align:center;margin-bottom:10px;}
-form{margin:20px;text-align:center;}
-button{padding:10px 20px;font-size:16px;border:none;border-radius:8px;background:#3549a3;color:#fff;cursor:pointer;}
+button{display:block;margin:20px auto;padding:10px 20px;font-size:16px;border:none;border-radius:8px;background:#3549a3;color:#fff;cursor:pointer;}
 button:hover{background:#2d3a80;}
 @media print{
     body{margin:0;background:#fff;}
-    form{display:none;}
+    button{display:none;}
     .wrapper{gap:0;justify-content:flex-start;flex-wrap:wrap;}
     .card{margin-bottom:20px;page-break-inside:avoid;}
 }
@@ -68,16 +66,7 @@ button:hover{background:#2d3a80;}
 </head>
 <body>
 
-<form id="printerForm">
-    <label for="printer">Select Printer:</label>
-    <select id="printer" name="printer">
-        <?php foreach($printers as $p): ?>
-            <option value="<?= htmlspecialchars($p) ?>" <?= $p === $defaultPrinter ? 'selected' : '' ?>><?= htmlspecialchars($p) ?></option>
-        <?php endforeach; ?>
-    </select>
-    <button type="button" id="printBtn">🖨️ Print IDs</button>
-    <button type="button" id="archiveBtn">✅ Confirm Printed & Archive</button>
-</form>
+<button id="printBtn">🖨️ Print IDs</button>
 
 <div class="wrapper">
 <?php foreach($students as $row): ?>
@@ -113,30 +102,40 @@ button:hover{background:#2d3a80;}
 
 <script>
 document.getElementById('printBtn').addEventListener('click', function(){
-    const selectedPrinter = document.getElementById('printer').value;
-    alert("Ready to print on: " + selectedPrinter + "\nUse your browser Print button to send via USB.");
-});
+    // Open print dialog
+    window.print();
 
-document.getElementById('archiveBtn').addEventListener('click', function(){
-    if(confirm("Have you printed the IDs? Click OK to archive all printed students.")){
-        const ids = <?= json_encode(array_column($students,'id')) ?>;
-        fetch("archive_stud.php", {
-            method: "POST",
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: "ids=" + encodeURIComponent(ids.join(',')),
-            credentials: "same-origin"
-        })
-        .then(res => res.text())
-        .then(data => {
-            if(data.trim() === "ok"){
-                alert("All students archived successfully!");
-                window.location.href = "archive.php";
-            } else {
-                alert("Archiving failed: " + data);
-            }
-        })
-        .catch(err => alert("Error: " + err));
-    }
+    // After print dialog is closed
+    setTimeout(function(){
+        const printed = confirm("Did you print the IDs successfully?");
+        if(printed){
+            // Archive printed students
+            const ids = <?= json_encode(array_column($students,'id')) ?>;
+            fetch("archive_stud.php", {
+                method: "POST",
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: "ids=" + encodeURIComponent(ids.join(',')),
+                credentials: "same-origin"
+            })
+            .then(res => res.text())
+            .then(data => {
+                if(data.trim() === "ok"){
+                    alert("All students archived successfully!");
+                    window.location.href = "archive.php";
+                } else {
+                    alert("Archiving failed: " + data);
+                    window.location.href = "records.php";
+                }
+            })
+            .catch(err => {
+                alert("Error: " + err);
+                window.location.href = "records.php";
+            });
+        } else {
+            // Go back to records if not printed
+            window.location.href = "records.php";
+        }
+    }, 500);
 });
 </script>
 
