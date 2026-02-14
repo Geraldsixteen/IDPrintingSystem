@@ -56,7 +56,14 @@ body{margin:0;font-family:"Segoe UI",Arial,sans-serif;background:#f4f4f4;}
 h3{text-align:center;margin-bottom:10px;}
 button{display:block;margin:20px auto;padding:10px 20px;font-size:16px;border:none;border-radius:8px;background:#3549a3;color:#fff;cursor:pointer;}
 button:hover{background:#2d3a80;}
+
+/* PRINT STYLES */
 @media print{
+    @page {
+        size: landscape;
+        margin: 10mm;
+    }
+
     body{margin:0;background:#fff;}
     button{display:none;}
     .wrapper{gap:0;justify-content:flex-start;flex-wrap:wrap;}
