@@ -2,31 +2,6 @@
 session_start();
 require_once __DIR__ . '/../Config/database.php';
 
-// -------------------------
-// PHP runtime overrides
-// -------------------------
-ini_set('upload_max_filesize', '10M');
-ini_set('post_max_size', '10M');
-ini_set('max_execution_time', '300'); // optional for large files
-ini_set('max_input_time', '300');
-ini_set('memory_limit', '128M'); // enough for image resizing
-
-// Only show fatal errors in JSON output
-error_reporting(E_ERROR | E_PARSE);
-
-// -------------------------
-// Helper function: send JSON and exit
-// -------------------------
-function send_json($arr){
-    if(ob_get_level()) ob_end_clean();
-    header('Content-Type: application/json');
-    echo json_encode($arr);
-    exit;
-}
-
-// -------------------------
-// Handle POST
-// -------------------------
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $lrn = trim($_POST['lrn'] ?? '');
@@ -37,82 +12,66 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $guardian_name = trim($_POST['guardian_name'] ?? '');
     $guardian_contact = trim($_POST['guardian_contact'] ?? '');
 
-    // Validate required fields
     if (!$lrn || !$full_name || !$id_number || !$strand) {
         send_json(['success'=>false,'msg'=>'Please fill in all required fields.']);
     }
 
-    // Check file upload
-    if (!isset($_FILES['photo'])) {
-        send_json(['success'=>false,'msg'=>'No file uploaded']);
+    if (!isset($_FILES['photo']) || $_FILES['photo']['error'] !== UPLOAD_ERR_OK) {
+        send_json(['success'=>false,'msg'=>'Upload failed']);
     }
 
     $file = $_FILES['photo'];
-
-    // Handle PHP upload errors
-    $uploadErrors = [
-        UPLOAD_ERR_OK => 'OK',
-        UPLOAD_ERR_INI_SIZE => 'File too large (server limit)',
-        UPLOAD_ERR_FORM_SIZE => 'File too large (form limit)',
-        UPLOAD_ERR_PARTIAL => 'File partially uploaded',
-        UPLOAD_ERR_NO_FILE => 'No file uploaded',
-        UPLOAD_ERR_NO_TMP_DIR => 'Missing temp folder',
-        UPLOAD_ERR_CANT_WRITE => 'Cannot write to disk',
-        UPLOAD_ERR_EXTENSION => 'File upload stopped by extension'
-    ];
-
-    if ($file['error'] !== UPLOAD_ERR_OK) {
-        $msg = $uploadErrors[$file['error']] ?? 'Unknown upload error';
-        send_json(['success'=>false,'msg'=>"Upload error ($file[error]): $msg, file size: {$file['size']} bytes"]);
-    }
-
-    // Validate image
     $tmp = $file['tmp_name'];
-    $info = @getimagesize($tmp);
-    if (!$info) send_json(['success'=>false,'msg'=>'Invalid image file']);
 
-    // Manual file size check (10MB max)
-    $maxBytes = 10 * 1024 * 1024;
-    if ($file['size'] > $maxBytes) send_json(['success'=>false,'msg'=>'File too large (max 10MB)']);
-
-    // Resize image to 300x400
+    // Resize image
     $src = @imagecreatefromstring(file_get_contents($tmp));
-    if (!$src) send_json(['success'=>false,'msg'=>'Cannot process image']);
     $dst = imagecreatetruecolor(300, 400);
-    imagecopyresampled($dst, $src, 0,0,0,0, 300,400, imagesx($src), imagesy($src));
+    imagecopyresampled($dst, $src, 0,0,0,0,300,400,imagesx($src), imagesy($src));
 
-    // Save blob
     ob_start();
     imagejpeg($dst, null, 85);
-    $photo_blob = ob_get_clean();
+    $image_data = ob_get_clean();
     imagedestroy($src);
     imagedestroy($dst);
 
-    // Backup filename
-    $photo_filename = $lrn.'_'.time().'.jpg';
-    $backupDir = __DIR__ . '/../AdminSystem/Uploads/';
-    if (!is_dir($backupDir)) mkdir($backupDir, 0777, true);
-    file_put_contents($backupDir.$photo_filename, $photo_blob);
+    $photo_filename = $lrn . '.jpg';  // <-- always use LRN.jpg
+    $uploadDir = __DIR__ . '/../AdminSystem/Uploads/';
+    if (!is_dir($uploadDir)) mkdir($uploadDir, 0777, true);
 
-    // Insert into database
+    file_put_contents($uploadDir . $photo_filename, $image_data);
+    $photo_base64 = base64_encode($image_data);
+
     try {
+        $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+
+        // Check duplicate LRN or ID number
+        $check = $pdo->prepare("SELECT COUNT(*) FROM register WHERE lrn=:lrn OR id_number=:id_number");
+        $check->execute([':lrn'=>$lrn, ':id_number'=>$id_number]);
+        if ($check->fetchColumn() > 0) {
+            send_json(['success'=>false,'msg'=>'LRN or ID Number already exists']);
+        }
+
         $stmt = $pdo->prepare("
             INSERT INTO register
-            (lrn, full_name, id_number, strand, home_address, guardian_name, guardian_contact, photo, photo_blob, created_at)
-            VALUES (:lrn,:full_name,:id_number,:strand,:home_address,:guardian_name,:guardian_contact,:photo,:photo_blob,NOW())
+            (lrn,full_name,id_number,strand,home_address,guardian_name,guardian_contact,photo,photo_blob,created_at)
+            VALUES
+            (:lrn,:full_name,:id_number,:strand,:home_address,:guardian_name,:guardian_contact,:photo,:photo_blob,NOW())
         ");
-        $stmt->bindParam(':lrn', $lrn);
-        $stmt->bindParam(':full_name', $full_name);
-        $stmt->bindParam(':id_number', $id_number);
-        $stmt->bindParam(':strand', $strand);
-        $stmt->bindParam(':home_address', $home_address);
-        $stmt->bindParam(':guardian_name', $guardian_name);
-        $stmt->bindParam(':guardian_contact', $guardian_contact);
-        $stmt->bindParam(':photo', $photo_filename);
-        $stmt->bindParam(':photo_blob', $photo_blob, PDO::PARAM_LOB);
-        $stmt->execute();
+
+        $stmt->execute([
+            ':lrn'=>$lrn,
+            ':full_name'=>$full_name,
+            ':id_number'=>$id_number,
+            ':strand'=>$strand,
+            ':home_address'=>$home_address,
+            ':guardian_name'=>$guardian_name,
+            ':guardian_contact'=>$guardian_contact,
+            ':photo'=>$photo_filename,        // consistent filename
+            ':photo_blob'=>$photo_base64
+        ]);
 
         send_json(['success'=>true,'msg'=>'Successfully Registered!']);
+
     } catch(PDOException $e){
         send_json(['success'=>false,'msg'=>'Database error: '.$e->getMessage()]);
     }
@@ -133,88 +92,91 @@ body{margin:0;font-family:"Segoe UI",Arial,sans-serif;background:#f0f4ff;display
 .card{margin:0 10px;background:#fff;padding:25px;border-radius:15px;box-shadow:0 6px 20px rgba(0,0,0,0.1);}
 .card h3{text-align:center;margin-bottom:20px;color:#002b80;}
 .form-group{position:relative;margin-bottom:18px;}
-.form-group input,.form-group select{width:95%;padding:14px;border-radius:10px;border:1px solid #ccc;font-size:14px;outline:none;background:transparent;}
-.form-group label{position:absolute;left:12px;top:14px;color:#999;font-size:14px;pointer-events:none;transition:0.2s all;}
-.form-group input:focus + label,
-.form-group input:not(:placeholder-shown) + label,
-.form-group select:focus + label,
-.form-group select:not([value=""]) + label{top:-8px;left:10px;font-size:12px;color:#002b80;background:#fff;padding:0 5px;}
-.card button{margin-top:10px;width:100%;padding:14px;border:none;border-radius:12px;background:#002b80;color:white;font-weight:600;font-size:16px;cursor:pointer;}
-.card button:hover{background:#1f2857;}
-#popupMsg{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) scale(0.8);background:#28a745;color:white;padding:20px 25px;border-radius:12px;font-weight:600;box-shadow:0 4px 15px rgba(0,0,0,0.3);z-index:9999;opacity:0;transition:opacity 0.5s,transform 0.3s;text-align:center;min-width:220px;max-width:90%;}
-#popupMsg.show{opacity:1;transform:translate(-50%,-50%) scale(1);}
-#popupMsg .checkmark{display:block;width:50px;height:50px;margin:0 auto 10px;border-radius:50%;background:white;position:relative;}
-#popupMsg .checkmark:after{content:'';position:absolute;left:14px;top:8px;width:12px;height:25px;border:solid #28a745;border-width:0 4px 4px 0;transform:rotate(45deg);animation:check 0.5s ease forwards;}
-@keyframes check{from{width:0;height:0;}to{width:12px;height:25px;}}
-@media(max-width:500px){body{padding:15px}.card{padding:20px}}
+.form-group input,.form-group select{width:95%;padding:14px;border-radius:10px;border:1px solid #ccc;font-size:14px;background:transparent;}
+.form-group label{position:absolute;left:12px;top:14px;color:#999;font-size:14px;pointer-events:none;transition:.2s}
+.form-group input:focus+label,
+.form-group input:not(:placeholder-shown)+label,
+.form-group select:focus+label,
+.form-group select:not([value=""])+label{top:-8px;left:10px;font-size:12px;color:#002b80;background:#fff;padding:0 5px}
+.card button{margin-top:10px;width:100%;padding:14px;border:none;border-radius:12px;background:#002b80;color:white;font-weight:600;font-size:16px;cursor:pointer}
+.card button:hover{background:#1f2857}
+#popupMsg{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#28a745;color:white;padding:20px;border-radius:12px;font-weight:600;display:none;text-align:center;min-width:220px;max-width:90%;}
+#popupMsg.show{display:block}
+#photoPreview{display:block;margin:10px auto;width:150px;height:200px;object-fit:cover;border-radius:10px;border:1px solid #ccc;}
 </style>
 </head>
 <body>
 <div class="main">
-    <div class="topbar">
-        <img src="cdlb.png" alt="CDLB Logo">
-        <h3>Senior High Student ID Registration</h3>
-    </div>
-    <div class="card">
-        <h3>Register Student</h3>
-        <form id="reg-form" enctype="multipart/form-data">
-            <div class="form-group"><input type="text" name="lrn" placeholder=" " required><label>LRN</label></div>
-            <div class="form-group"><input type="text" name="full_name" placeholder=" " required><label>Full Name</label></div>
-            <div class="form-group"><input type="text" name="id_number" placeholder=" " required><label>ID Number</label></div>
-            <div class="form-group">
-                <select name="strand" required>
-                    <option value="" hidden></option>
-                    <option value="STEM">STEM</option>
-                    <option value="HUMMS">HUMMS</option>
-                    <option value="ABM">ABM</option>
-                    <option value="GAS">GAS</option>
-                    <option value="ICT">ICT</option>
-                </select>
-                <label>Strand</label>
-            </div>
-            <div class="form-group"><input type="text" name="home_address" placeholder=" " required><label>Home Address</label></div>
-            <div class="form-group"><input type="text" name="guardian_name" placeholder=" " required><label>Guardian's Name</label></div>
-            <div class="form-group"><input type="text" name="guardian_contact" placeholder=" " required><label>Guardian's Contact</label></div>
-            <div class="form-group"><input type="file" name="photo" accept="image/*" required><label>Upload Photo</label></div>
-            <button type="submit">Register</button>
-        </form>
-    </div>
+<div class="topbar">
+<img src="cdlb.png" alt="CDLB Logo">
+<h3>Senior High Student ID Registration</h3>
 </div>
+<div class="card">
+<h3>Register Student</h3>
+<form id="reg-form" enctype="multipart/form-data">
+<div class="form-group"><input type="text" name="lrn" placeholder=" " required><label>LRN</label></div>
+<div class="form-group"><input type="text" name="full_name" placeholder=" " required><label>Full Name</label></div>
+<div class="form-group"><input type="text" name="id_number" placeholder=" " required><label>ID Number</label></div>
+<div class="form-group">
+<select name="strand" required>
+<option value="" hidden></option>
+<option value="STEM">STEM</option>
+<option value="HUMMS">HUMMS</option>
+<option value="ABM">ABM</option>
+<option value="GAS">GAS</option>
+<option value="ICT">ICT</option>
+</select>
+<label>Strand</label>
+</div>
+<div class="form-group"><input type="text" name="home_address" placeholder=" " required><label>Home Address</label></div>
+<div class="form-group"><input type="text" name="guardian_name" placeholder=" " required><label>Guardian's Name</label></div>
+<div class="form-group"><input type="text" name="guardian_contact" placeholder=" " required><label>Guardian's Contact</label></div>
+<div class="form-group">
+<input type="file" name="photo" accept="image/*" required>
+<img id="photoPreview" src="" alt="Photo Preview">
+</div>
+<button type="submit">Register</button>
+</form>
+</div>
+</div>
+
 <script>
-const form = document.getElementById('reg-form');
-form.addEventListener('submit', async function(e){
+const form=document.getElementById('reg-form');
+const photoInput=form.querySelector('input[name="photo"]');
+const preview=document.getElementById('photoPreview');
+
+// Show preview on file select
+photoInput.addEventListener('change',e=>{
+    const file=e.target.files[0];
+    if(file){
+        const reader=new FileReader();
+        reader.onload=ev=>preview.src=ev.target.result;
+        reader.readAsDataURL(file);
+    }else{
+        preview.src='';
+    }
+});
+
+form.addEventListener('submit',async e=>{
     e.preventDefault();
-    const fileInput = form.querySelector('input[name="photo"]');
-    if(!fileInput.files || fileInput.files.length === 0){
-        alert('Please upload a photo');
-        return;
-    }
-    if(fileInput.files[0].size > 10*1024*1024){
-        alert('File too large (max 10MB)');
-        return;
-    }
-
-
-    const formData = new FormData(form);
-
-    try {
-        const res = await fetch('index.php', {method:'POST', body:formData});
-        const data = await res.json();
-
+    const fd=new FormData(form);
+    try{
+        const res=await fetch('index.php',{method:'POST',body:fd});
+        const data=await res.json();
         if(data.success){
-            const popup = document.createElement('div');
-            popup.id='popupMsg';
-            popup.innerHTML=`<span class="checkmark"></span>${data.msg}`;
-            document.body.appendChild(popup);
-            setTimeout(()=>popup.classList.add('show'),50);
+            const p=document.createElement('div');
+            p.id='popupMsg';
+            p.innerHTML='<div>✔</div>'+data.msg;
+            document.body.appendChild(p);
+            p.classList.add('show');
             form.reset();
-            setTimeout(()=>{popup.classList.remove('show');setTimeout(()=>popup.remove(),500)},2500);
-        } else {
-            alert('Error: '+data.msg);
+            preview.src='';
+            setTimeout(()=>p.remove(),2500);
+        }else{
+            alert(data.msg);
         }
-    } catch(err){
-        console.error(err);
-        alert('Error submitting form: '+err.message);
+    }catch(err){
+        alert('Submit failed: '+err.message);
     }
 });
 </script>
