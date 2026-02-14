@@ -1,7 +1,11 @@
-<?php  
+<?php
 require_once __DIR__ . '/admin-auth.php';
 require_once __DIR__ . '/../Config/database.php';
 require_once __DIR__ . '/photo-helper.php';
+require_once __DIR__ . '/../vendor/autoload.php'; // dompdf
+
+use Dompdf\Dompdf;
+use Dompdf\Options;
 
 if (!isset($_SESSION['admin_id'])) {
     header("Location: login.php");
@@ -9,7 +13,6 @@ if (!isset($_SESSION['admin_id'])) {
 }
 
 // ================= GET STUDENTS =================
-// Accept either ?id=123 or ?ids=123,124,125
 $idsArray = [];
 
 if (isset($_GET['id'])) {
@@ -20,7 +23,6 @@ if (isset($_GET['id'])) {
 
 if (empty($idsArray)) die("No students selected.");
 
-// Fetch all selected students
 $inQuery = implode(',', array_fill(0, count($idsArray), '?'));
 $stmt = $pdo->prepare("SELECT * FROM register WHERE id IN ($inQuery) ORDER BY full_name ASC");
 $stmt->execute($idsArray);
@@ -34,7 +36,69 @@ function studentLevel($row) {
     if (!empty($row['course'])) return "Course: " . htmlspecialchars($row['course']);
     return "";
 }
+
+// ================= GENERATE HTML FOR PDF =================
+ob_start();
 ?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Student IDs</title>
+<style>
+body{font-family:"Segoe UI",Arial,sans-serif;margin:0;padding:0;}
+.card{width:360px;height:540px;border:1px solid #000;margin:10px;padding:10px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:space-between;}
+.photo{width:180px;height:180px;object-fit:cover;border:2px solid #000;border-radius:8px;margin:0 auto;}
+.info{font-weight:600;margin:4px 0;text-align:center;}
+.back{font-size:12px;text-align:left;}
+</style>
+</head>
+<body>
+<?php foreach($students as $row): ?>
+    <div class="card">
+        <div style="text-align:center;font-weight:bold;">Colegio de Los Baños</div>
+        <div class="photo">
+            <?= displayPhoto($row['photo'] ?? null, $row['photo_blob'] ?? null) ?>
+        </div>
+        <div class="info"><?= htmlspecialchars($row['full_name']) ?></div>
+        <div class="info">LRN: <?= htmlspecialchars($row['lrn']) ?></div>
+        <div class="info">ID: <?= htmlspecialchars($row['id_number']) ?></div>
+        <div class="info"><?= studentLevel($row) ?></div>
+        <div class="back">
+            <strong>Address:</strong> <?= htmlspecialchars($row['home_address']) ?><br>
+            <strong>Guardian:</strong> <?= htmlspecialchars($row['guardian_name']) ?><br>
+            <strong>Contact:</strong> <?= htmlspecialchars($row['guardian_contact']) ?><br>
+        </div>
+    </div>
+<?php endforeach; ?>
+</body>
+</html>
+<?php
+$html = ob_get_clean();
+
+// ================= GENERATE PDF =================
+$options = new Options();
+$options->set('isRemoteEnabled', true); // allow images from local/URLs
+$dompdf = new Dompdf($options);
+$dompdf->loadHtml($html);
+$dompdf->setPaper('A4', 'portrait');
+$dompdf->render();
+
+// Save PDF temporarily
+$tempPdf = __DIR__ . '/temp_ids.pdf';
+file_put_contents($tempPdf, $dompdf->output());
+
+// ================= PRINT DIRECTLY TO PRINTER =================
+$printerName = "L3110 Series"; // change this to your printer name anytime
+exec("print /D:\"$printerName\" \"$tempPdf\"");
+
+// Optional: delete temporary PDF after sending to printer
+unlink($tempPdf);
+
+echo "Sent to printer: $printerName";
+
+?>
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -64,7 +128,7 @@ h3{text-align:center;margin-bottom:10px;}
 </head>
 <body>
 
-<button id="printBtn">🖨️ Print All Selected IDs</button>
+<button id="printBtn">🖨️ Print</button>
 
 <div class="wrapper">
 
