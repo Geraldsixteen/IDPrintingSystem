@@ -10,7 +10,11 @@ if (!isset($_SESSION['admin_id'])) {
 
 // ================= GET STUDENTS =================
 // Expect comma-separated IDs via GET, e.g., print.php?ids=1,2,3
-if (!isset($_GET['ids'])) die("No students selected.");
+if (!isset($_GET['ids']) || empty(trim($_GET['ids']))) {
+    die("No students selected.");
+}
+
+// Sanitize and parse IDs
 $idsRaw = $_GET['ids'];
 $idsArray = array_filter(array_map('intval', explode(',', $idsRaw)));
 if (empty($idsArray)) die("Invalid student selection.");

@@ -246,6 +246,7 @@ img { width:70px; height:90px; object-fit:cover; border-radius:6px; border:2px s
                             <td class="actions">
                                 <a href="update.php?id=<?= $row['id'] ?>"><button class="edit-btn">Edit</button></a>
                                 <a href="print.php?id=<?= $row['id'] ?>"><button class="edit-btn" style="background:#3498db;">🖨️ Print</button></a>
+                                <a href="print.php?ids=<?= implode(',', $selectedIds) ?>" target="_blank">Print Selected</a>
                             </td>
                         </tr>
                     <?php endforeach; ?>
