@@ -44,8 +44,8 @@ $defaultPrinter = "L3110 Series";
 <title>Print Student IDs</title>
 <style>
 .photo {
-    width: 180px;
-    height: 180px;
+    width: 210px;
+    height: 210px;
     margin: 20px auto 10px auto; /* top, sides auto for centering, bottom 10px */
     border: 2px solid #000;
     border-radius: 8px;
@@ -63,7 +63,6 @@ body{margin:0;font-family:"Segoe UI",Arial,sans-serif;background:#f4f4f4;}
 .wrapper{display:flex;flex-wrap:wrap;gap:40px;justify-content:center;margin:30px;}
 .card{width:360px;height:540px;border-radius:12px;box-shadow:0 6px 18px rgba(0,0,0,.15);padding:20px;box-sizing:border-box;background:#fff;display:flex;flex-direction:column;justify-content:space-between;}
 .front,.back{text-align:center;}
-.photo{width:180px;height:180px;object-fit:cover;border:2px solid #000;border-radius:8px;margin:20px auto;}
 .info{font-weight:600;margin:4px 0;}
 .back{margin-left:15px;font-size:13px;text-align:left;padding:15px;}
 .box{border:1px solid #ccc;border-radius:6px;padding:8px;margin-bottom:10px;}
