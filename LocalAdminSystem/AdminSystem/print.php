@@ -9,15 +9,16 @@ if (!isset($_SESSION['admin_id'])) {
 }
 
 // ================= GET STUDENTS =================
-// Expect comma-separated IDs via GET, e.g., print.php?ids=1,2,3
-if (!isset($_GET['ids']) || empty(trim($_GET['ids']))) {
-    die("No students selected.");
+// Accept either ?id=123 or ?ids=123,124,125
+$idsArray = [];
+
+if (isset($_GET['id'])) {
+    $idsArray[] = intval($_GET['id']);
+} elseif (isset($_GET['ids']) && !empty(trim($_GET['ids']))) {
+    $idsArray = array_filter(array_map('intval', explode(',', $_GET['ids'])));
 }
 
-// Sanitize and parse IDs
-$idsRaw = $_GET['ids'];
-$idsArray = array_filter(array_map('intval', explode(',', $idsRaw)));
-if (empty($idsArray)) die("Invalid student selection.");
+if (empty($idsArray)) die("No students selected.");
 
 // Fetch all selected students
 $inQuery = implode(',', array_fill(0, count($idsArray), '?'));
@@ -34,7 +35,6 @@ function studentLevel($row) {
     return "";
 }
 ?>
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
