@@ -2,10 +2,17 @@
 session_start();
 require_once __DIR__ . '/../Config/database.php';
 
+// Ensure large uploads work
+ini_set('upload_max_filesize', '10M');
+ini_set('post_max_size', '12M');
+ini_set('max_execution_time', '300');
+ini_set('display_errors', 0);
+error_reporting(E_ALL);
+
 // JSON helper
 function send_json($arr){
     if(ob_get_level()) ob_end_clean();
-    header('Content-Type: application/json');
+    header('Content-Type: application/json; charset=utf-8');
     echo json_encode($arr);
     exit;
 }
@@ -24,15 +31,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         send_json(['success'=>false,'msg'=>'Please fill in all required fields.']);
     }
 
-    if (!isset($_FILES['photo']) || $_FILES['photo']['error'] !== UPLOAD_ERR_OK) {
-        send_json(['success'=>false,'msg'=>'Upload failed']);
+    if (!isset($_FILES['photo'])) {
+        send_json(['success'=>false,'msg'=>'No file uploaded']);
     }
 
     $file = $_FILES['photo'];
+
+    if ($file['error'] !== UPLOAD_ERR_OK) {
+        $errMsgs = [
+            UPLOAD_ERR_INI_SIZE => 'File exceeds server limit',
+            UPLOAD_ERR_FORM_SIZE => 'File exceeds form limit',
+            UPLOAD_ERR_PARTIAL => 'File partially uploaded',
+            UPLOAD_ERR_NO_FILE => 'No file selected',
+            UPLOAD_ERR_NO_TMP_DIR => 'Missing temporary folder',
+            UPLOAD_ERR_CANT_WRITE => 'Cannot write file',
+            UPLOAD_ERR_EXTENSION => 'Upload stopped by extension'
+        ];
+        $msg = $errMsgs[$file['error']] ?? 'Unknown upload error';
+        send_json(['success'=>false,'msg'=>"Upload failed: $msg"]);
+    }
+
     $tmp = $file['tmp_name'];
 
-    // Resize image
-    $src = @imagecreatefromstring(file_get_contents($tmp));
+    if (!is_uploaded_file($tmp)) {
+        send_json(['success'=>false,'msg'=>'Invalid upload']);
+    }
+
+    $imgContents = file_get_contents($tmp);
+    $src = @imagecreatefromstring($imgContents);
+
+    if (!$src) {
+        send_json(['success'=>false,'msg'=>'Uploaded file is not a valid image']);
+    }
+
     $dst = imagecreatetruecolor(300, 400);
     imagecopyresampled($dst, $src, 0,0,0,0,300,400,imagesx($src), imagesy($src));
 
@@ -48,7 +79,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-        // Check duplicate LRN or ID number
+        // Check duplicate
         $check = $pdo->prepare("SELECT COUNT(*) FROM register WHERE lrn=:lrn OR id_number=:id_number");
         $check->execute([':lrn'=>$lrn, ':id_number'=>$id_number]);
         if ($check->fetchColumn() > 0) {
@@ -109,7 +140,6 @@ body{margin:0;font-family:"Segoe UI",Arial,sans-serif;background:#f0f4ff;display
 .card button{margin-top:10px;width:100%;padding:14px;border:none;border-radius:12px;background:#002b80;color:white;font-weight:600;font-size:16px;cursor:pointer}
 .card button:hover{background:#1f2857}
 #popupMsg{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#28a745;color:white;padding:20px;border-radius:12px;font-weight:600;display:none;text-align:center;min-width:220px;max-width:90%;}
-
 #photoPreview{display:block;margin:10px auto;width:150px;height:200px;object-fit:cover;border-radius:10px;border:1px solid #ccc;}
 </style>
 </head>
@@ -158,7 +188,11 @@ form.addEventListener('submit', async e => {
 
     try {
         const res = await fetch('index.php', { method: 'POST', body: fd });
-        const data = await res.json();
+        const text = await res.text();
+
+        let data;
+        try { data = JSON.parse(text); } 
+        catch(err) { throw new Error("Invalid JSON: " + text); }
 
         if (data.success) {
             const p = document.createElement('div');
@@ -168,7 +202,7 @@ form.addEventListener('submit', async e => {
             p.classList.add('show');
 
             form.reset();
-            preview.src = data.photo_base64; // show from DB directly
+            preview.src = data.photo_base64;
 
             setTimeout(() => p.remove(), 2500);
         } else {
