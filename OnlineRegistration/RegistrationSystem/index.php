@@ -82,7 +82,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Senior High Registration</title>
 <style>
-body{margin:0;font-family:"Segoe UI",Arial,sans-serif;background:#f0f4ff;display:flex;justify-content:center;padding:20px;}
+body{margin:0;font-family:"Segoe UI",Arial,sans-serif;background:#f0f4ff;display:flex;justify-content:center;padding:0;}
 .main{width:100%;max-width:500px;}
 .topbar{background:white;text-align:center;margin-bottom:20px;}
 .topbar img{width:80px;display:block;margin:0 auto 10px;}
