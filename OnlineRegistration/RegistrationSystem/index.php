@@ -2,13 +2,13 @@
 session_start();
 require_once __DIR__ . '/../Config/database.php';
 
-// Set proper error reporting for production-safe JSON
+// Only show fatal errors in JSON output
 error_reporting(E_ERROR | E_PARSE);
 
-// Only handle POST requests
+// Handle POST
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Prevent any previous output breaking JSON
-    ob_start();
+    // Clean output buffer
+    if (ob_get_level()) ob_end_clean();
     header('Content-Type: application/json');
 
     $lrn = trim($_POST['lrn'] ?? '');
@@ -21,42 +21,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // Validate required fields
     if (!$lrn || !$full_name || !$id_number || !$strand) {
-        echo json_encode(['success' => false, 'msg' => 'Please fill in all required fields.']);
+        echo json_encode(['success'=>false,'msg'=>'Please fill in all required fields.']);
         exit;
     }
 
-    // Check if file was uploaded
+    // Check file upload
     if (!isset($_FILES['photo'])) {
-        echo json_encode(['success' => false, 'msg' => 'No file uploaded']);
+        echo json_encode(['success'=>false,'msg'=>'No file uploaded']);
         exit;
     }
 
     $file = $_FILES['photo'];
 
-    // Handle PHP upload errors
+    // Handle all PHP upload errors
+    $uploadErrors = [
+        UPLOAD_ERR_OK => 'OK',
+        UPLOAD_ERR_INI_SIZE => 'File too large (ini_max)',
+        UPLOAD_ERR_FORM_SIZE => 'File too large (form_max)',
+        UPLOAD_ERR_PARTIAL => 'File partially uploaded',
+        UPLOAD_ERR_NO_FILE => 'No file uploaded',
+        UPLOAD_ERR_NO_TMP_DIR => 'Missing temp folder',
+        UPLOAD_ERR_CANT_WRITE => 'Cannot write to disk',
+        UPLOAD_ERR_EXTENSION => 'File upload stopped by extension'
+    ];
+
     if ($file['error'] !== UPLOAD_ERR_OK) {
-        $msg = match($file['error']) {
-            UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE => 'File too large. Max size 10MB',
-            UPLOAD_ERR_PARTIAL => 'File partially uploaded. Try again.',
-            UPLOAD_ERR_NO_FILE => 'Please upload a photo',
-            UPLOAD_ERR_NO_TMP_DIR => 'Missing temporary folder',
-            UPLOAD_ERR_CANT_WRITE => 'Cannot write file to disk',
-            UPLOAD_ERR_EXTENSION => 'File upload stopped by extension',
-            default => 'Unknown upload error',
-        };
-        echo json_encode(['success' => false, 'msg' => $msg]);
+        $msg = $uploadErrors[$file['error']] ?? 'Unknown upload error';
+        echo json_encode(['success'=>false,'msg'=>"Upload error ($file[error]): $msg"]);
         exit;
     }
 
     $tmp = $file['tmp_name'];
-    $info = getimagesize($tmp);
+    $info = @getimagesize($tmp);
     if (!$info) {
-        echo json_encode(['success' => false, 'msg' => 'Invalid image file']);
+        echo json_encode(['success'=>false,'msg'=>'Invalid image file']);
         exit;
     }
 
     // Resize to 300x400
-    $src = imagecreatefromstring(file_get_contents($tmp));
+    $src = @imagecreatefromstring(file_get_contents($tmp));
+    if (!$src) {
+        echo json_encode(['success'=>false,'msg'=>'Cannot process image']);
+        exit;
+    }
     $dst = imagecreatetruecolor(300, 400);
     imagecopyresampled($dst, $src, 0, 0, 0, 0, 300, 400, imagesx($src), imagesy($src));
 
@@ -74,7 +81,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     file_put_contents($backupDir . $photo_filename, $photo_blob);
 
     try {
-        // Insert into database
         $stmt = $pdo->prepare("
             INSERT INTO register
             (lrn, full_name, id_number, strand, home_address, guardian_name, guardian_contact, photo, photo_blob, created_at)
@@ -91,14 +97,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->bindParam(':photo_blob', $photo_blob, PDO::PARAM_LOB);
         $stmt->execute();
 
-        echo json_encode(['success' => true, 'msg' => 'Successfully Registered!']);
+        echo json_encode(['success'=>true,'msg'=>'Successfully Registered!']);
         exit;
-
     } catch (PDOException $e) {
-        echo json_encode(['success' => false, 'msg' => 'Database error: ' . $e->getMessage()]);
+        echo json_encode(['success'=>false,'msg'=>'Database error: '.$e->getMessage()]);
         exit;
     }
 }
+
 ?>
 
 <!DOCTYPE html>
