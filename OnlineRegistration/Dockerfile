@@ -2,7 +2,7 @@ FROM php:8.2-apache
 
 # Install PostgreSQL dependencies
 RUN apt-get update && apt-get install -y libpq-dev unzip zip \
-    && docker-php-ext-install pdo pdo_pgsql
+    && docker-php-ext-install pdo pdo_pgsql zip
 
 # Copy OnlineRegistration as a folder (KEEP directory level)
 COPY OnlineRegistration /var/www/html/OnlineRegistration

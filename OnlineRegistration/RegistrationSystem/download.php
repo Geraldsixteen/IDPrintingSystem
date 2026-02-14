@@ -1,59 +1,72 @@
 <?php
-// download.php
 
-// --------------- CONFIG ----------------
-$backupDir = '/mnt/data/UploadsBackup/'; // Path to backup folder
-$allowedFiles = array_diff(scandir($backupDir), ['.', '..']); // list all files in backup
+$backupDir = '/mnt/data/UploadsBackup/';
 
-// --------------- DOWNLOAD INDIVIDUAL FILE ----------------
+// Ensure backup folder exists
+if (!is_dir($backupDir)) {
+    die("Backup directory not found.");
+}
+
+// Get files safely
+$allowedFiles = array_values(array_filter(scandir($backupDir), function ($f) use ($backupDir) {
+    return is_file($backupDir . $f);
+}));
+
+// ================= SINGLE FILE DOWNLOAD =================
 if (isset($_GET['file'])) {
-    $filename = basename($_GET['file']); // sanitize input
+
+    $filename = basename($_GET['file']);
     $path = $backupDir . $filename;
 
-    if (!file_exists($path)) {
-        http_response_code(404);
-        echo "File not found.";
-        exit;
+    if (!in_array($filename, $allowedFiles)) {
+        http_response_code(403);
+        exit("Access denied.");
     }
 
-    header('Content-Description: File Transfer');
     header('Content-Type: application/octet-stream');
-    header('Content-Disposition: attachment; filename="'.basename($path).'"');
-    header('Expires: 0');
-    header('Cache-Control: must-revalidate');
-    header('Pragma: public');
+    header('Content-Disposition: attachment; filename="' . $filename . '"');
     header('Content-Length: ' . filesize($path));
+
     readfile($path);
     exit;
 }
 
-// --------------- DOWNLOAD ALL AS ZIP ----------------
-if (isset($_GET['all']) && $_GET['all'] == 1) {
-    $zipFile = '/tmp/backups.zip';
-    $zip = new ZipArchive();
-    if ($zip->open($zipFile, ZipArchive::CREATE | ZipArchive::OVERWRITE) === TRUE) {
-        foreach ($allowedFiles as $file) {
-            $zip->addFile($backupDir . $file, $file);
-        }
-        $zip->close();
+// ================= DOWNLOAD ALL ZIP =================
+if (isset($_GET['all'])) {
 
-        header('Content-Type: application/zip');
-        header('Content-Disposition: attachment; filename="backups.zip"');
-        header('Content-Length: ' . filesize($zipFile));
-        readfile($zipFile);
-        unlink($zipFile);
-        exit;
-    } else {
-        echo "Failed to create zip.";
-        exit;
+    if (!class_exists('ZipArchive')) {
+        die("ZIP extension not installed.");
     }
+
+    $zipFile = tempnam(sys_get_temp_dir(), 'backup_') . '.zip';
+
+    $zip = new ZipArchive();
+
+    if ($zip->open($zipFile, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== TRUE) {
+        die("Cannot create ZIP.");
+    }
+
+    foreach ($allowedFiles as $file) {
+        $zip->addFile($backupDir . $file, $file);
+    }
+
+    $zip->close();
+
+    header('Content-Type: application/zip');
+    header('Content-Disposition: attachment; filename="backups.zip"');
+    header('Content-Length: ' . filesize($zipFile));
+
+    readfile($zipFile);
+    unlink($zipFile);
+    exit;
 }
 
-// --------------- HTML LIST ----------------
-echo "<h3>Backup Images</h3>";
-echo "<ul>";
+// ================= HTML LIST =================
+echo "<h3>Backup Images</h3><ul>";
+
 foreach ($allowedFiles as $file) {
-    echo "<li><a href='?file=$file'>$file</a></li>";
+    echo "<li><a href='?file=" . urlencode($file) . "'>$file</a></li>";
 }
-echo "</ul>";
-echo "<br><a href='?all=1'>Download All as ZIP</a>";
+
+echo "</ul><br>";
+echo "<a href='?all=1'>Download All as ZIP</a>";
