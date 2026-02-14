@@ -15,22 +15,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $guardian_contact = trim($_POST['guardian_contact'] ?? '');
 
     if (!$lrn || !$full_name || !$id_number || !$strand) {
-        echo json_encode(['success'=>false,'msg'=>'Please fill in all required fields.']);
+        echo json_encode(['success' => false, 'msg' => 'Please fill in all required fields.']);
         exit;
     }
 
+    // Must upload a photo
     if (empty($_FILES['photo']['tmp_name']) || !is_uploaded_file($_FILES['photo']['tmp_name'])) {
-        echo json_encode(['success'=>false,'msg'=>'Please upload a photo']);
+        echo json_encode(['success' => false, 'msg' => 'Please upload a photo']);
         exit;
     }
 
-    // Resize the uploaded photo
     $tmp = $_FILES['photo']['tmp_name'];
     $info = getimagesize($tmp);
-    if (!$info) { echo json_encode(['success'=>false,'msg'=>'Invalid image']); exit; }
+    if (!$info) {
+        echo json_encode(['success' => false, 'msg' => 'Invalid image']);
+        exit;
+    }
 
+    // Resize to 300x400
     $src = imagecreatefromstring(file_get_contents($tmp));
-    $dst = imagecreatetruecolor(300,400);
+    $dst = imagecreatetruecolor(300, 400);
     imagecopyresampled($dst, $src, 0,0,0,0, 300,400, imagesx($src), imagesy($src));
 
     // Save photo to memory for blob
@@ -40,10 +44,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     imagedestroy($src);
     imagedestroy($dst);
 
-    // Generate filename for backup
+    // Generate filename
     $photo_filename = $lrn . '_' . time() . '.jpg';
 
-    // Save backup inside AdminSystem/Uploads/
+    // Backup locally inside AdminSystem/Uploads/
     $backupDir = __DIR__ . '/../AdminSystem/Uploads/';
     if (!is_dir($backupDir)) mkdir($backupDir, 0777, true);
     file_put_contents($backupDir . $photo_filename, $photo_blob);
@@ -52,8 +56,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // Insert into database
         $stmt = $pdo->prepare("
             INSERT INTO register
-            (lrn, full_name, id_number, strand, home_address, guardian_name, guardian_contact, photo_blob, created_at)
-            VALUES (:lrn,:full_name,:id_number,:strand,:home_address,:guardian_name,:guardian_contact,:photo_blob,NOW())
+            (lrn, full_name, id_number, strand, home_address, guardian_name, guardian_contact, photo, photo_blob, created_at)
+            VALUES (:lrn,:full_name,:id_number,:strand,:home_address,:guardian_name,:guardian_contact,:photo,:photo_blob,NOW())
         ");
         $stmt->bindParam(':lrn', $lrn);
         $stmt->bindParam(':full_name', $full_name);
@@ -62,14 +66,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->bindParam(':home_address', $home_address);
         $stmt->bindParam(':guardian_name', $guardian_name);
         $stmt->bindParam(':guardian_contact', $guardian_contact);
+        $stmt->bindParam(':photo', $photo_filename);
         $stmt->bindParam(':photo_blob', $photo_blob, PDO::PARAM_LOB);
         $stmt->execute();
 
-        echo json_encode(['success'=>true,'msg'=>'Successfully Registered!']);
+        echo json_encode(['success' => true, 'msg' => 'Successfully Registered!']);
         exit;
 
-    } catch(PDOException $e){
-        echo json_encode(['success'=>false,'msg'=>'Database error: '.$e->getMessage()]);
+    } catch(PDOException $e) {
+        echo json_encode(['success' => false, 'msg' => 'Database error: ' . $e->getMessage()]);
         exit;
     }
 }
@@ -82,7 +87,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Senior High Registration</title>
 <style>
-body{margin:0;font-family:"Segoe UI",Arial,sans-serif;background:#f0f4ff;display:flex;justify-content:center;padding:0;}
+body{margin:0;font-family:"Segoe UI",Arial,sans-serif;background:#f0f4ff;display:flex;justify-content:center;padding:20px;}
 .main{width:100%;max-width:500px;}
 .topbar{background:white;text-align:center;margin-bottom:20px;}
 .topbar img{width:80px;display:block;margin:0 auto 10px;}
