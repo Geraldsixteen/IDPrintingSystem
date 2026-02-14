@@ -80,7 +80,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <style>
 /* Reset & body */
 body { margin:0; font-family:"Segoe UI",Arial,sans-serif; background:#f0f4ff; display:flex; justify-content:center; padding:20px; }
-.main { width:100%; max-width:490px; }
+.main { width:100%; max-width:480px; }
 
 /* Topbar */
 .topbar { text-align:center; margin-bottom:25px; }
@@ -93,7 +93,7 @@ body { margin:0; font-family:"Segoe UI",Arial,sans-serif; background:#f0f4ff; di
 
 /* Floating Labels */
 .form-group { position: relative; margin-bottom:18px; }
-.form-group input, .form-group select { width:100%; padding:14px 12px 14px 12px; border-radius:10px; border:1px solid #ccc; font-size:14px; outline:none; background:transparent; }
+.form-group input, .form-group select { width:95%; padding:14px 12px 14px 12px; border-radius:10px; border:1px solid #ccc; font-size:14px; outline:none; background:transparent; }
 .form-group label { position:absolute; left:12px; top:14px; color:#999; font-size:14px; pointer-events:none; transition:0.2s all; }
 .form-group input:focus + label,
 .form-group input:not(:placeholder-shown) + label,
