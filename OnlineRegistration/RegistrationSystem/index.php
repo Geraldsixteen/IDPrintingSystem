@@ -2,6 +2,14 @@
 session_start();
 require_once __DIR__ . '/../Config/database.php';
 
+// JSON helper
+function send_json($arr){
+    if(ob_get_level()) ob_end_clean();
+    header('Content-Type: application/json');
+    echo json_encode($arr);
+    exit;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $lrn = trim($_POST['lrn'] ?? '');
