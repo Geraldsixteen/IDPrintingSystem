@@ -1,36 +1,30 @@
 <?php
-function displayPhoto($filename) {
+/**
+ * Display a student's photo
+ * 
+ * @param string|null $filename The local filename in AdminSystem/Uploads/
+ * @param string|null $photo_blob Optional database blob (binary)
+ * @return string HTML <img> or placeholder
+ */
+function displayPhoto($filename = null, $photo_blob = null) {
 
-    if (empty($filename)) {
-        return "<div style='width:70px;height:90px;border:2px solid #000;
-        display:flex;align-items:center;justify-content:center'>No Photo</div>";
-    }
+    // Local file path (inside LocalAdminSystem/AdminSystem/Uploads/)
+    $localPath = __DIR__ . '/Uploads/' . $filename;
 
-    // Physical path (disk)
-    $ephemeralPath = __DIR__ . '/../../OnlineRegistration/Public/Uploads/' . $filename;
-
-    // Browser URL (MUST include IDPrintingSystem)
-    $ephemeralURL = '/IDPrintingSystem/OnlineRegistration/Public/Uploads/' . $filename;
-
-    // Local Windows backup
-    $backupPath = 'C:/LocalAdminSystem/UploadsBackup/' . $filename;
-
-    // First: online uploads
-    if (file_exists($ephemeralPath)) {
-        return "<img src='$ephemeralURL'
+    // 1️⃣ Check local file first
+    if ($filename && file_exists($localPath)) {
+        return "<img src='Uploads/$filename' 
             style='width:70px;height:90px;object-fit:cover;border:2px solid #000'>";
     }
 
-    // Second: local backup
-    if (file_exists($backupPath)) {
-        $type = pathinfo($backupPath, PATHINFO_EXTENSION);
-        $data = file_get_contents($backupPath);
-        $base64 = 'data:image/'.$type.';base64,'.base64_encode($data);
-
-        return "<img src='$base64'
+    // 2️⃣ Fallback: use database blob if available
+    if ($photo_blob) {
+        $base64 = base64_encode($photo_blob);
+        return "<img src='data:image/jpeg;base64,$base64'
             style='width:70px;height:90px;object-fit:cover;border:2px solid #000'>";
     }
 
+    // 3️⃣ No photo available
     return "<div style='width:70px;height:90px;border:2px solid red;
-    display:flex;align-items:center;justify-content:center'>Missing</div>";
+        display:flex;align-items:center;justify-content:center'>No Photo</div>";
 }

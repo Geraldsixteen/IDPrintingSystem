@@ -1,11 +1,6 @@
 <?php
 require_once __DIR__ . '/admin-auth.php';
-
-// ================== PostgreSQL Connection ==================
-// Include your existing database connection
 require_once __DIR__ . '/../Config/database.php';
-
-// ==========================================================
 
 $err = '';
 $success = '';

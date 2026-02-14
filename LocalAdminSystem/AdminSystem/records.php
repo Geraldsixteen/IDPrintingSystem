@@ -243,9 +243,7 @@ img { width:70px; height:90px; object-fit:cover; border-radius:6px; border:2px s
                             <td><?= htmlspecialchars($row['home_address']) ?></td>
                             <td><?= htmlspecialchars($row['guardian_name']) ?></td>
                             <td><?= htmlspecialchars($row['guardian_contact']) ?></td>
-                            <td>
-                                <?= displayPhoto($row['photo']) ?>
-                            </td>
+                            <td><?= displayPhoto($row['lrn'] . '.jpg', $row['photo_blob']) ?></td>
                             <td><?= $row['created_at'] ? date('Y-m-d H:i:s', strtotime($row['created_at'])) : '-' ?></td>
                             <td><?= $row['restored_at'] ? date('Y-m-d H:i:s', strtotime($row['restored_at'])) : '-' ?></td>
                             <td class="actions">

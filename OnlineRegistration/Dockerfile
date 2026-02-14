@@ -1,29 +1,29 @@
 FROM php:8.2-apache
 
-# Install dependencies for PostgreSQL and PHP PDO
+# Install PostgreSQL dependencies
 RUN apt-get update && apt-get install -y libpq-dev unzip zip \
     && docker-php-ext-install pdo pdo_pgsql
 
-# Copy your app into container
-COPY RegistrationSystem/ /var/www/html/
-COPY Config/ /var/www/html/Config/
-COPY Public/ /var/www/html/Public/
+# Copy OnlineRegistration as a folder (KEEP directory level)
+COPY OnlineRegistration /var/www/html/OnlineRegistration
 
-# Ensure Uploads folder exists and is writable
-RUN mkdir -p /var/www/html/Public/Uploads \
-    && mkdir -p /var/backup/UploadsBackup \
-    && chown -R www-data:www-data /var/www/html/Public \
-    && chown -R www-data:www-data /var/backup/UploadsBackup \
-    && chmod -R 777 /var/www/html/Public/Uploads \
-    && chmod -R 777 /var/backup/UploadsBackup
+# Copy Config folder
+COPY Config /var/www/html/Config
 
-# Enable Apache mod_rewrite (optional, if you use clean URLs)
+# Point Apache to OnlineRegistration
+ENV APACHE_DOCUMENT_ROOT=/var/www/html/OnlineRegistration
+
+RUN sed -ri 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-available/*.conf \
+ && sed -ri 's!/var/www/!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/apache2.conf /etc/apache2/conf-available/*.conf
+
+# Create persistent backup folder (Render disk mount)
+RUN mkdir -p /mnt/data/UploadsBackup \
+    && chown -R www-data:www-data /mnt/data \
+    && chmod -R 777 /mnt/data
+
+# Enable Apache rewrite
 RUN a2enmod rewrite
 
-# Set working directory
-WORKDIR /var/www/html
+WORKDIR /var/www/html/OnlineRegistration
 
-# Expose port
 EXPOSE 80
-
-# Start Apache in foreground (default CMD already does this)

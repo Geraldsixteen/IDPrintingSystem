@@ -1,8 +1,8 @@
-<?php 
+<?php
 session_start();
-error_reporting(E_ALL); // show all errors while testing
+error_reporting(E_ALL);
 
-require_once __DIR__ . '/Config/database.php'; // fixed path
+require_once __DIR__ . '/../Config/database.php';
 
 $response = ['success' => false, 'msg' => ''];
 
@@ -18,7 +18,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $home_address = trim($_POST['home_address'] ?? '');
     $guardian_name = trim($_POST['guardian_name'] ?? '');
     $guardian_contact = trim($_POST['guardian_contact'] ?? '');
-    $photo_filename = null;
 
     // Basic validation
     if (!$lrn || !$full_name || !$id_number || !$strand) {
@@ -28,49 +27,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     // ==== Handle photo upload ====
+    $photo_blob = null;
+    $photo_filename = null;
+
     if (!empty($_FILES['photo']['tmp_name'])) {
+        $tmp = $_FILES['photo']['tmp_name'];
+        $original = basename($_FILES['photo']['name']);
 
-        $fileTmp = $_FILES['photo']['tmp_name'];
-        $fileName = basename($_FILES['photo']['name']);
-        $fileExt = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
-        $allowed = ['jpg','jpeg','png','gif'];
-
-        if (!in_array($fileExt, $allowed)) {
-            $response['msg'] = "Only JPG, PNG, GIF files are allowed.";
-            echo json_encode($response);
+        // Validate image extension
+        $ext = strtolower(pathinfo($original, PATHINFO_EXTENSION));
+        $allowed = ['jpg', 'jpeg', 'png', 'gif'];
+        if (!in_array($ext, $allowed)) {
+            echo json_encode(['success'=>false,'msg'=>'Invalid image type']);
             exit;
         }
 
-        // Clean filename
-        $photo_filename = time() . '_' . preg_replace("/[^a-zA-Z0-9_\-\.]/", "", $fileName);
+        // Read binary for DB
+        $photo_blob = file_get_contents($tmp);
 
-        // --- Save to Public/Uploads ---
-        $uploadDir = __DIR__ . '/Public/Uploads/';
+        // === Local Admin Backup ===
+        $localBackupDir = __DIR__ . '/../../LocalAdminSystem/AdminSystem/Uploads/';
+        if (!is_dir($localBackupDir)) mkdir($localBackupDir, 0777, true);
 
-        if (!is_dir($uploadDir)) {
-            mkdir($uploadDir, 0777, true);
-        }
+        $photo_filename = $lrn . '_' . time() . '.' . $ext;
+        copy($tmp, $localBackupDir . $photo_filename);
 
-        if (!is_writable($uploadDir)) {
-            chmod($uploadDir, 0777);
-        }
+        // === Persistent Render Backup ===
+        $renderBackupDir = '/mnt/data/UploadsBackup/';
+        if (!is_dir($renderBackupDir)) mkdir($renderBackupDir, 0777, true);
 
-        $targetPath = $uploadDir . $photo_filename;
-
-        if (!move_uploaded_file($fileTmp, $targetPath)) {
-            $error = error_get_last();
-            $response['msg'] = "Failed to upload photo. Folder: $uploadDir. Error: " . ($error['message'] ?? 'unknown');
-            echo json_encode($response);
-            exit;
-        }
-
-        // --- Optional backup folder ---
-        $backupDir = '/var/backup/UploadsBackup/';
-        if (!is_dir($backupDir)) mkdir($backupDir, 0777, true);
-        $backupPath = $backupDir . $photo_filename;
-        if (!copy($targetPath, $backupPath)) {
-            error_log("Failed to backup photo to local folder: $backupPath");
-        }
+        copy($tmp, $renderBackupDir . $photo_filename);
     }
 
     // Check duplicate LRN
@@ -83,36 +69,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     // Insert into DB
-    $stmt = $pdo->prepare("
-        INSERT INTO register 
-        (lrn, full_name, id_number, strand, home_address, guardian_name, guardian_contact, photo, created_at)
-        VALUES (:lrn, :full_name, :id_number, :strand, :home_address, :guardian_name, :guardian_contact, :photo, NOW())
-    ");
-    $stmt->execute([
-        ':lrn' => $lrn,
-        ':full_name' => $full_name,
-        ':id_number' => $id_number,
-        ':strand' => $strand,
-        ':home_address' => $home_address,
-        ':guardian_name' => $guardian_name,
-        ':guardian_contact' => $guardian_contact,
-        ':photo' => $photo_filename
-    ]);
+    try {
+        $stmt = $pdo->prepare("
+            INSERT INTO register 
+            (lrn, full_name, id_number, strand, home_address, guardian_name, guardian_contact, photo_blob, created_at)
+            VALUES (:lrn, :full_name, :id_number, :strand, :home_address, :guardian_name, :guardian_contact, :photo_blob, NOW())
+        ");
+        $stmt->bindParam(':lrn', $lrn);
+        $stmt->bindParam(':full_name', $full_name);
+        $stmt->bindParam(':id_number', $id_number);
+        $stmt->bindParam(':strand', $strand);
+        $stmt->bindParam(':home_address', $home_address);
+        $stmt->bindParam(':guardian_name', $guardian_name);
+        $stmt->bindParam(':guardian_contact', $guardian_contact);
+        $stmt->bindParam(':photo_blob', $photo_blob, PDO::PARAM_LOB);
 
-    $response['success'] = true;
-    $response['msg'] = 'Registration successful!';
-    $response['data'] = [
-        'id' => $pdo->lastInsertId(),
-        'lrn' => $lrn,
-        'full_name' => $full_name,
-        'id_number' => $id_number,
-        'strand' => $strand,
-        'home_address' => $home_address,
-        'guardian_name' => $guardian_name,
-        'guardian_contact' => $guardian_contact,
-        'photo' => $photo_filename,
-        'created_at' => date('Y-m-d H:i:s')
-    ];
+        $stmt->execute();
+
+        $response['success'] = true;
+        $response['msg'] = 'Registration successful!';
+        $response['data'] = [
+            'id' => $pdo->lastInsertId(),
+            'lrn' => $lrn,
+            'full_name' => $full_name,
+            'id_number' => $id_number,
+            'strand' => $strand,
+            'home_address' => $home_address,
+            'guardian_name' => $guardian_name,
+            'guardian_contact' => $guardian_contact,
+            'photo_filename' => $photo_filename,
+            'created_at' => date('Y-m-d H:i:s')
+        ];
+
+    } catch (PDOException $e) {
+        $response['success'] = false;
+        $response['msg'] = "Database error: " . $e->getMessage();
+    }
 
     echo json_encode($response);
     exit;
@@ -130,7 +122,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <body>
 <div class="main">
     <div class="topbar">
-        <img src="/Public/cdlb.png">
+        <img src="../Public/cdlb.png">
         <h3>Senior High Student ID Registration</h3>
     </div>
 
@@ -169,25 +161,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 <script>
 const form = document.getElementById('reg-form');
-
 form.addEventListener('submit', function(e){
     e.preventDefault();
     const formData = new FormData(form);
-
-    fetch('index.php', {
-        method: 'POST',
-        body: formData
-    })
-    .then(res => res.text())
-    .then(text => {
-        let data;
-        try {
-            data = JSON.parse(text);
-        } catch(err){
-            console.error('Invalid JSON response:', text);
-            alert('Server error, check console.');
-            return;
-        }
+    fetch('index.php', { method:'POST', body:formData })
+    .then(res => res.json())
+    .then(data => {
         if(data.success){
             alert(data.msg);
             form.reset();
