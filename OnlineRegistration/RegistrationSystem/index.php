@@ -20,7 +20,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $guardian_name = isset($_POST['guardian_name']) ? trim($_POST['guardian_name']) : '';
     $guardian_contact = isset($_POST['guardian_contact']) ? trim($_POST['guardian_contact']) : '';
 
-
     if (!$lrn || !$full_name || !$id_number || !$strand) {
         send_json(['success'=>false,'msg'=>'Please fill in all required fields.']);
     }
@@ -43,12 +42,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     imagedestroy($src);
     imagedestroy($dst);
 
-    $photo_filename = $lrn . '.jpg';  // <-- always use LRN.jpg
-    $uploadDir = __DIR__ . '/../AdminSystem/Uploads/';
-    if (!is_dir($uploadDir)) mkdir($uploadDir, 0777, true);
-
-    file_put_contents($uploadDir . $photo_filename, $image_data);
     $photo_base64 = base64_encode($image_data);
+    $photo_filename = $lrn . '_' . time() . '.jpg'; // Only DB reference
 
     try {
         $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
@@ -62,24 +57,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $stmt = $pdo->prepare("
             INSERT INTO register
-            (lrn,full_name,id_number,strand,home_address,guardian_name,guardian_contact,photo,photo_blob,created_at)
+            (lrn, full_name, id_number, strand, home_address, guardian_name, guardian_contact, photo, photo_blob, created_at)
             VALUES
-            (:lrn,:full_name,:id_number,:strand,:home_address,:guardian_name,:guardian_contact,:photo,:photo_blob,NOW())
+            (:lrn, :full_name, :id_number, :strand, :home_address, :guardian_name, :guardian_contact, :photo, :photo_blob, NOW())
         ");
 
         $stmt->execute([
-            ':lrn'=>$lrn,
-            ':full_name'=>$full_name,
-            ':id_number'=>$id_number,
-            ':strand'=>$strand,
-            ':home_address'=>$home_address,
-            ':guardian_name'=>$guardian_name,
-            ':guardian_contact'=>$guardian_contact,
-            ':photo'=>$photo_filename,        // consistent filename
-            ':photo_blob'=>$photo_base64
+            ':lrn' => $lrn,
+            ':full_name' => $full_name,
+            ':id_number' => $id_number,
+            ':strand' => $strand,
+            ':home_address' => $home_address,
+            ':guardian_name' => $guardian_name,
+            ':guardian_contact' => $guardian_contact,
+            ':photo' => $photo_filename,
+            ':photo_blob' => $photo_base64
         ]);
 
-        send_json(['success'=>true,'msg'=>'Successfully Registered!']);
+        send_json([
+            'success' => true,
+            'msg' => 'Successfully Registered!',
+            'photo_base64' => 'data:image/jpeg;base64,' . $photo_base64
+        ]);
 
     } catch(PDOException $e){
         send_json(['success'=>false,'msg'=>'Database error: '.$e->getMessage()]);
@@ -110,7 +109,7 @@ body{margin:0;font-family:"Segoe UI",Arial,sans-serif;background:#f0f4ff;display
 .card button{margin-top:10px;width:100%;padding:14px;border:none;border-radius:12px;background:#002b80;color:white;font-weight:600;font-size:16px;cursor:pointer}
 .card button:hover{background:#1f2857}
 #popupMsg{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#28a745;color:white;padding:20px;border-radius:12px;font-weight:600;display:none;text-align:center;min-width:220px;max-width:90%;}
-#popupMsg.show{display:block}
+
 #photoPreview{display:block;margin:10px auto;width:150px;height:200px;object-fit:cover;border-radius:10px;border:1px solid #ccc;}
 </style>
 </head>
@@ -150,42 +149,33 @@ body{margin:0;font-family:"Segoe UI",Arial,sans-serif;background:#f0f4ff;display
 </div>
 
 <script>
-const form=document.getElementById('reg-form');
-const photoInput=form.querySelector('input[name="photo"]');
-const preview=document.getElementById('photoPreview');
+const form = document.getElementById('reg-form');
+const preview = document.getElementById('photoPreview');
 
-// Show preview on file select
-photoInput.addEventListener('change',e=>{
-    const file=e.target.files[0];
-    if(file){
-        const reader=new FileReader();
-        reader.onload=ev=>preview.src=ev.target.result;
-        reader.readAsDataURL(file);
-    }else{
-        preview.src='';
-    }
-});
-
-form.addEventListener('submit',async e=>{
+form.addEventListener('submit', async e => {
     e.preventDefault();
-    const fd=new FormData(form);
-    try{
-        const res=await fetch('index.php',{method:'POST',body:fd});
-        const data=await res.json();
-        if(data.success){
-            const p=document.createElement('div');
-            p.id='popupMsg';
-            p.innerHTML='<div>✔</div>'+data.msg;
+    const fd = new FormData(form);
+
+    try {
+        const res = await fetch('index.php', { method: 'POST', body: fd });
+        const data = await res.json();
+
+        if (data.success) {
+            const p = document.createElement('div');
+            p.id = 'popupMsg';
+            p.innerHTML = '<div>✔</div>' + data.msg;
             document.body.appendChild(p);
             p.classList.add('show');
+
             form.reset();
-            preview.src='';
-            setTimeout(()=>p.remove(),2500);
-        }else{
+            preview.src = data.photo_base64; // show from DB directly
+
+            setTimeout(() => p.remove(), 2500);
+        } else {
             alert(data.msg);
         }
-    }catch(err){
-        alert('Submit failed: '+err.message);
+    } catch (err) {
+        alert('Submit failed: ' + err.message);
     }
 });
 </script>

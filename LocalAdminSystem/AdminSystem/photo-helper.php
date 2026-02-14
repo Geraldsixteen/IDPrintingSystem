@@ -7,20 +7,14 @@
  * @return string HTML <img> tag
  */
 function displayPhoto($filename = null, $photo_blob = null){
-    // Physical path to Uploads folder
-    $uploadDir = __DIR__ . '/Uploads/';
-    if (!is_dir($uploadDir)) mkdir($uploadDir, 0777, true);
+    // Target Uploads folder in LocalAdminSystem/AdminSystem
+    $adminUploadsDir = __DIR__ . '/../../LocalAdminSystem/AdminSystem/Uploads/';
 
-    // Full local path to the file
-    $localPath = $uploadDir . $filename;
-
-    // Base URL relative to the PHP file
-    $baseURL = 'Uploads/'; // Relative to records.php
+    $filePath = $adminUploadsDir . $filename;
 
     // 1. Use local file if it exists
-    if ($filename && file_exists($localPath)) {
-        $url = $baseURL . $filename;
-        return "<img src='$url' alt='Student Photo' style='width:70px;height:90px;object-fit:cover;border:2px solid #000'>";
+    if ($filename && file_exists($filePath)) {
+        return "<img src='../../LocalAdminSystem/AdminSystem/Uploads/$filename' alt='Student Photo' style='width:70px;height:90px;object-fit:cover;border:2px solid #000'>";
     }
 
     // 2. Restore from DB blob if missing locally
@@ -28,17 +22,21 @@ function displayPhoto($filename = null, $photo_blob = null){
         if (is_resource($photo_blob)) {
             $photo_blob = stream_get_contents($photo_blob);
         }
-        file_put_contents($localPath, $photo_blob);
-        $url = $baseURL . $filename;
-        return "<img src='$url' alt='Student Photo' style='width:70px;height:90px;object-fit:cover;border:2px solid #000'>";
+
+        // Ensure folder exists before writing
+        if (!is_dir($adminUploadsDir)) mkdir($adminUploadsDir, 0777, true);
+
+        file_put_contents($filePath, $photo_blob);
+        return "<img src='../../LocalAdminSystem/AdminSystem/Uploads/$filename' alt='Student Photo' style='width:70px;height:90px;object-fit:cover;border:2px solid #000'>";
     }
 
-    // 3. Fallback to default image
-    $default = 'default.png'; // Ensure this file exists in Uploads/
-    $defaultPath = $uploadDir . $default;
+    // 3. Fallback to default image in AdminSystem Uploads
+    $default = 'default.png';
+    $defaultPath = $adminUploadsDir . $default;
 
+    // Optional: create placeholder if default missing
     if (!file_exists($defaultPath)) {
-        // Optional: create a blank placeholder if default.png missing
+        if (!is_dir($adminUploadsDir)) mkdir($adminUploadsDir, 0777, true);
         $img = imagecreatetruecolor(70, 90);
         $bg = imagecolorallocate($img, 200, 200, 200);
         imagefill($img, 0, 0, $bg);
@@ -46,7 +44,6 @@ function displayPhoto($filename = null, $photo_blob = null){
         imagedestroy($img);
     }
 
-    $url = $baseURL . $default;
-    return "<img src='$url' alt='Default Photo' style='width:70px;height:90px;object-fit:cover;border:2px solid #000'>";
+    return "<img src='../../LocalAdminSystem/AdminSystem/Uploads/$default' alt='Default Photo' style='width:70px;height:90px;object-fit:cover;border:2px solid #000'>";
 }
 ?>
