@@ -49,7 +49,7 @@ body{margin:0;font-family:"Segoe UI",Arial,sans-serif;background:#f4f4f4;}
 .front,.back{text-align:center;}
 .photo{width:180px;height:180px;object-fit:cover;border:2px solid #000;border-radius:8px;margin:20px auto;}
 .info{font-weight:600;margin:4px 0;}
-.back{font-size:13px;text-align:left;padding:15px;}
+.back{margin-left:15px;font-size:13px;text-align:left;padding:15px;}
 .box{border:1px solid #ccc;border-radius:6px;padding:8px;margin-bottom:10px;}
 .box strong{display:block;margin-bottom:3px;}
 .sign{display:flex;justify-content:space-between;margin-top:30px;font-weight:600;}
