@@ -2,7 +2,7 @@
 session_start();
 require_once __DIR__ . '/../Config/database.php';
 
-// Ensure large uploads work
+// Ensure large uploads work (server fallback)
 ini_set('upload_max_filesize', '10M');
 ini_set('post_max_size', '12M');
 ini_set('max_execution_time', '300');
@@ -26,55 +26,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $home_address = isset($_POST['home_address']) ? trim($_POST['home_address']) : '';
     $guardian_name = isset($_POST['guardian_name']) ? trim($_POST['guardian_name']) : '';
     $guardian_contact = isset($_POST['guardian_contact']) ? trim($_POST['guardian_contact']) : '';
+    $photo_base64 = isset($_POST['photo_base64']) ? $_POST['photo_base64'] : '';
 
     if (!$lrn || !$full_name || !$id_number || !$strand) {
         send_json(['success'=>false,'msg'=>'Please fill in all required fields.']);
     }
 
-    if (!isset($_FILES['photo'])) {
-        send_json(['success'=>false,'msg'=>'No file uploaded']);
+    if (!$photo_base64) {
+        send_json(['success'=>false,'msg'=>'No photo uploaded']);
     }
 
-    $file = $_FILES['photo'];
-
-    if ($file['error'] !== UPLOAD_ERR_OK) {
-        $errMsgs = [
-            UPLOAD_ERR_INI_SIZE => 'File exceeds server limit',
-            UPLOAD_ERR_FORM_SIZE => 'File exceeds form limit',
-            UPLOAD_ERR_PARTIAL => 'File partially uploaded',
-            UPLOAD_ERR_NO_FILE => 'No file selected',
-            UPLOAD_ERR_NO_TMP_DIR => 'Missing temporary folder',
-            UPLOAD_ERR_CANT_WRITE => 'Cannot write file',
-            UPLOAD_ERR_EXTENSION => 'Upload stopped by extension'
-        ];
-        $msg = $errMsgs[$file['error']] ?? 'Unknown upload error';
-        send_json(['success'=>false,'msg'=>"Upload failed: $msg"]);
+    // Strip data URL prefix if present
+    if (preg_match('/^data:image\/\w+;base64,/', $photo_base64)) {
+        $photo_base64 = preg_replace('/^data:image\/\w+;base64,/', '', $photo_base64);
     }
 
-    $tmp = $file['tmp_name'];
-
-    if (!is_uploaded_file($tmp)) {
-        send_json(['success'=>false,'msg'=>'Invalid upload']);
+    $image_data = base64_decode($photo_base64);
+    if (!$image_data) {
+        send_json(['success'=>false,'msg'=>'Invalid image data']);
     }
 
-    $imgContents = file_get_contents($tmp);
-    $src = @imagecreatefromstring($imgContents);
-
-    if (!$src) {
-        send_json(['success'=>false,'msg'=>'Uploaded file is not a valid image']);
-    }
-
-    $dst = imagecreatetruecolor(300, 400);
-    imagecopyresampled($dst, $src, 0,0,0,0,300,400,imagesx($src), imagesy($src));
-
-    ob_start();
-    imagejpeg($dst, null, 85);
-    $image_data = ob_get_clean();
-    imagedestroy($src);
-    imagedestroy($dst);
-
-    $photo_base64 = base64_encode($image_data);
-    $photo_filename = $lrn . '_' . time() . '.jpg'; // Only DB reference
+    $photo_filename = $lrn . '_' . time() . '.jpg';
 
     try {
         $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
@@ -151,7 +123,7 @@ body{margin:0;font-family:"Segoe UI",Arial,sans-serif;background:#f0f4ff;display
 </div>
 <div class="card">
 <h3>Register Student</h3>
-<form id="reg-form" enctype="multipart/form-data">
+<form id="reg-form">
 <div class="form-group"><input type="text" name="lrn" placeholder=" " required><label>LRN</label></div>
 <div class="form-group"><input type="text" name="full_name" placeholder=" " required><label>Full Name</label></div>
 <div class="form-group"><input type="text" name="id_number" placeholder=" " required><label>ID Number</label></div>
@@ -170,7 +142,7 @@ body{margin:0;font-family:"Segoe UI",Arial,sans-serif;background:#f0f4ff;display
 <div class="form-group"><input type="text" name="guardian_name" placeholder=" " required><label>Guardian's Name</label></div>
 <div class="form-group"><input type="text" name="guardian_contact" placeholder=" " required><label>Guardian's Contact</label></div>
 <div class="form-group">
-<input type="file" name="photo" accept="image/*" required>
+<input type="file" id="photoInput" accept="image/*" required>
 <img id="photoPreview" src="" alt="Photo Preview">
 </div>
 <button type="submit">Register</button>
@@ -181,18 +153,60 @@ body{margin:0;font-family:"Segoe UI",Arial,sans-serif;background:#f0f4ff;display
 <script>
 const form = document.getElementById('reg-form');
 const preview = document.getElementById('photoPreview');
+const photoInput = document.getElementById('photoInput');
+
+let resizedPhotoBase64 = '';
+
+photoInput.addEventListener('change', e => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(ev){
+        const img = new Image();
+        img.onload = function(){
+            const maxWidth = 800;
+            const maxHeight = 1000;
+            let w = img.width;
+            let h = img.height;
+
+            if (w > maxWidth) { h = h * (maxWidth/w); w = maxWidth; }
+            if (h > maxHeight) { w = w * (maxHeight/h); h = maxHeight; }
+
+            const canvas = document.createElement('canvas');
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img,0,0,w,h);
+            resizedPhotoBase64 = canvas.toDataURL('image/jpeg', 0.85);
+            preview.src = resizedPhotoBase64;
+        }
+        img.src = ev.target.result;
+    }
+    reader.readAsDataURL(file);
+});
 
 form.addEventListener('submit', async e => {
     e.preventDefault();
-    const fd = new FormData(form);
+
+    if (!resizedPhotoBase64) {
+        alert('Please select a photo');
+        return;
+    }
+
+    const fd = new FormData();
+    for (let input of form.elements) {
+        if (input.name && input.type !== 'file') fd.append(input.name, input.value);
+    }
+    fd.append('photo_base64', resizedPhotoBase64);
 
     try {
         const res = await fetch('index.php', { method: 'POST', body: fd });
         const text = await res.text();
 
         let data;
-        try { data = JSON.parse(text); } 
-        catch(err) { throw new Error("Invalid JSON: " + text); }
+        try { data = JSON.parse(text); }
+        catch(err){ throw new Error("Invalid JSON: " + text); }
 
         if (data.success) {
             const p = document.createElement('div');
@@ -202,13 +216,14 @@ form.addEventListener('submit', async e => {
             p.classList.add('show');
 
             form.reset();
-            preview.src = data.photo_base64;
+            preview.src = '';
+            resizedPhotoBase64 = '';
 
             setTimeout(() => p.remove(), 2500);
         } else {
             alert(data.msg);
         }
-    } catch (err) {
+    } catch(err) {
         alert('Submit failed: ' + err.message);
     }
 });
