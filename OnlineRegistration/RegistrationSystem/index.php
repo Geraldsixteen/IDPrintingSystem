@@ -12,13 +12,14 @@ function send_json($arr){
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
-    $lrn = trim($_POST['lrn'] ?? '');
-    $full_name = trim($_POST['full_name'] ?? '');
-    $id_number = trim($_POST['id_number'] ?? '');
-    $strand = trim($_POST['strand'] ?? '');
-    $home_address = trim($_POST['home_address'] ?? '');
-    $guardian_name = trim($_POST['guardian_name'] ?? '');
-    $guardian_contact = trim($_POST['guardian_contact'] ?? '');
+    $lrn = isset($_POST['lrn']) ? trim($_POST['lrn']) : '';
+    $full_name = isset($_POST['full_name']) ? trim($_POST['full_name']) : '';
+    $id_number = isset($_POST['id_number']) ? trim($_POST['id_number']) : '';
+    $strand = isset($_POST['strand']) ? trim($_POST['strand']) : '';
+    $home_address = isset($_POST['home_address']) ? trim($_POST['home_address']) : '';
+    $guardian_name = isset($_POST['guardian_name']) ? trim($_POST['guardian_name']) : '';
+    $guardian_contact = isset($_POST['guardian_contact']) ? trim($_POST['guardian_contact']) : '';
+
 
     if (!$lrn || !$full_name || !$id_number || !$strand) {
         send_json(['success'=>false,'msg'=>'Please fill in all required fields.']);
