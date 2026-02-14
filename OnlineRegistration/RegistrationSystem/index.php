@@ -1,9 +1,14 @@
 <?php
 session_start();
-error_reporting(E_ALL);
 require_once __DIR__ . '/../Config/database.php';
 
+// Set proper error reporting for production-safe JSON
+error_reporting(E_ERROR | E_PARSE);
+
+// Only handle POST requests
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // Prevent any previous output breaking JSON
+    ob_start();
     header('Content-Type: application/json');
 
     $lrn = trim($_POST['lrn'] ?? '');
@@ -14,27 +19,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $guardian_name = trim($_POST['guardian_name'] ?? '');
     $guardian_contact = trim($_POST['guardian_contact'] ?? '');
 
-    // Required fields
+    // Validate required fields
     if (!$lrn || !$full_name || !$id_number || !$strand) {
         echo json_encode(['success' => false, 'msg' => 'Please fill in all required fields.']);
         exit;
     }
 
-    // Check file upload
-    if (!isset($_FILES['photo']) || $_FILES['photo']['error'] !== UPLOAD_ERR_OK) {
-        $errorMsg = isset($_FILES['photo']['error']) ? $_FILES['photo']['error'] : 'No file uploaded';
-        echo json_encode(['success' => false, 'msg' => 'Please upload a photo (Error code: '.$errorMsg.')']);
+    // Check if file was uploaded
+    if (!isset($_FILES['photo'])) {
+        echo json_encode(['success' => false, 'msg' => 'No file uploaded']);
         exit;
     }
 
-    $tmp = $_FILES['photo']['tmp_name'];
+    $file = $_FILES['photo'];
+
+    // Handle PHP upload errors
+    if ($file['error'] !== UPLOAD_ERR_OK) {
+        $msg = match($file['error']) {
+            UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE => 'File too large. Max size 10MB',
+            UPLOAD_ERR_PARTIAL => 'File partially uploaded. Try again.',
+            UPLOAD_ERR_NO_FILE => 'Please upload a photo',
+            UPLOAD_ERR_NO_TMP_DIR => 'Missing temporary folder',
+            UPLOAD_ERR_CANT_WRITE => 'Cannot write file to disk',
+            UPLOAD_ERR_EXTENSION => 'File upload stopped by extension',
+            default => 'Unknown upload error',
+        };
+        echo json_encode(['success' => false, 'msg' => $msg]);
+        exit;
+    }
+
+    $tmp = $file['tmp_name'];
     $info = getimagesize($tmp);
     if (!$info) {
         echo json_encode(['success' => false, 'msg' => 'Invalid image file']);
         exit;
     }
 
-    // Resize image to 300x400
+    // Resize to 300x400
     $src = imagecreatefromstring(file_get_contents($tmp));
     $dst = imagecreatetruecolor(300, 400);
     imagecopyresampled($dst, $src, 0, 0, 0, 0, 300, 400, imagesx($src), imagesy($src));
@@ -46,10 +67,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     imagedestroy($src);
     imagedestroy($dst);
 
-    // Generate backup filename
+    // Backup filename
     $photo_filename = $lrn . '_' . time() . '.jpg';
-
-    // Save backup locally
     $backupDir = __DIR__ . '/../AdminSystem/Uploads/';
     if (!is_dir($backupDir)) mkdir($backupDir, 0777, true);
     file_put_contents($backupDir . $photo_filename, $photo_blob);
@@ -75,7 +94,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         echo json_encode(['success' => true, 'msg' => 'Successfully Registered!']);
         exit;
 
-    } catch(PDOException $e) {
+    } catch (PDOException $e) {
         echo json_encode(['success' => false, 'msg' => 'Database error: ' . $e->getMessage()]);
         exit;
     }
@@ -149,21 +168,16 @@ body{margin:0;font-family:"Segoe UI",Arial,sans-serif;background:#f0f4ff;display
 const form = document.getElementById('reg-form');
 form.addEventListener('submit', async function(e){
     e.preventDefault();
-
-    const formData = new FormData(form);
-
-    // Check if file is selected
     const fileInput = form.querySelector('input[name="photo"]');
     if(!fileInput.files || fileInput.files.length === 0){
         alert('Please upload a photo');
         return;
     }
 
+    const formData = new FormData(form);
+
     try {
-        const res = await fetch('index.php', {
-            method: 'POST',
-            body: formData
-        });
+        const res = await fetch('index.php', {method:'POST', body:formData});
         const data = await res.json();
 
         if(data.success){
@@ -175,7 +189,7 @@ form.addEventListener('submit', async function(e){
             form.reset();
             setTimeout(()=>{popup.classList.remove('show');setTimeout(()=>popup.remove(),500)},2500);
         } else {
-            alert('Error: '+(data.msg||'Unknown'));
+            alert('Error: '+data.msg);
         }
     } catch(err){
         console.error(err);
