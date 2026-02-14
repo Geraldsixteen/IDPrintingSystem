@@ -80,10 +80,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <style>
 body{margin:0;font-family:"Segoe UI",Arial,sans-serif;background:#f0f4ff;display:flex;justify-content:center;padding:20px;}
 .main{width:100%;max-width:500px;}
-.topbar{text-align:center;margin-bottom:20px;}
+.topbar{background:white;text-align:center;margin-bottom:20px;}
 .topbar img{width:80px;display:block;margin:0 auto 10px;}
 .topbar h3{margin:0;color:#002b80;}
-.card{margin:0 20px;background:#fff;padding:25px;border-radius:15px;box-shadow:0 6px 20px rgba(0,0,0,0.1);}
+.card{margin:0 10px;background:#fff;padding:25px;border-radius:15px;box-shadow:0 6px 20px rgba(0,0,0,0.1);}
 .card h3{text-align:center;margin-bottom:20px;color:#002b80;}
 .form-group{position:relative;margin-bottom:18px;}
 .form-group input,.form-group select{width:95%;padding:14px;border-radius:10px;border:1px solid #ccc;font-size:14px;outline:none;background:transparent;}
