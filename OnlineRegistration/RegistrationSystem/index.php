@@ -1,7 +1,6 @@
 <?php
 session_start();
 error_reporting(E_ALL);
-
 require_once __DIR__ . '/../Config/database.php';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -20,45 +19,50 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
-    $photo_blob = null;
-    $photo_filename = null;
-
-    if (!empty($_FILES['photo']['tmp_name'])) {
-        $tmp = $_FILES['photo']['tmp_name'];
-        $info = getimagesize($tmp);
-        if (!$info) { echo json_encode(['success'=>false,'msg'=>'Invalid image']); exit; }
-
-        $src = imagecreatefromstring(file_get_contents($tmp));
-        $dst = imagecreatetruecolor(300,400);
-        imagecopyresampled($dst,$src,0,0,0,0,300,400,imagesx($src),imagesy($src));
-
-        $photo_filename = $lrn.'_'.time().'.jpg';
-        $uploadDir = __DIR__.'/uploads/'; // inside RegistrationSystem
-        if(!is_dir($uploadDir)) mkdir($uploadDir,0777,true);
-
-        $photo_path = $uploadDir.$photo_filename;
-        imagejpeg($dst,$photo_path,85);
-        imagedestroy($src);
-        imagedestroy($dst);
-
-        $photo_blob = file_get_contents($photo_path);
+    if (empty($_FILES['photo']['tmp_name']) || !is_uploaded_file($_FILES['photo']['tmp_name'])) {
+        echo json_encode(['success'=>false,'msg'=>'Please upload a photo']);
+        exit;
     }
 
+    // Resize the uploaded photo
+    $tmp = $_FILES['photo']['tmp_name'];
+    $info = getimagesize($tmp);
+    if (!$info) { echo json_encode(['success'=>false,'msg'=>'Invalid image']); exit; }
+
+    $src = imagecreatefromstring(file_get_contents($tmp));
+    $dst = imagecreatetruecolor(300,400);
+    imagecopyresampled($dst, $src, 0,0,0,0, 300,400, imagesx($src), imagesy($src));
+
+    // Save photo to memory for blob
+    ob_start();
+    imagejpeg($dst, null, 85);
+    $photo_blob = ob_get_clean();
+    imagedestroy($src);
+    imagedestroy($dst);
+
+    // Generate filename for backup
+    $photo_filename = $lrn . '_' . time() . '.jpg';
+
+    // Save backup inside AdminSystem/Uploads/
+    $backupDir = __DIR__ . '/../AdminSystem/Uploads/';
+    if (!is_dir($backupDir)) mkdir($backupDir, 0777, true);
+    file_put_contents($backupDir . $photo_filename, $photo_blob);
+
     try {
+        // Insert into database
         $stmt = $pdo->prepare("
             INSERT INTO register
-            (lrn, full_name, id_number, strand, home_address, guardian_name, guardian_contact, photo, photo_blob, created_at)
-            VALUES (:lrn,:full_name,:id_number,:strand,:home_address,:guardian_name,:guardian_contact,:photo,:photo_blob,NOW())
+            (lrn, full_name, id_number, strand, home_address, guardian_name, guardian_contact, photo_blob, created_at)
+            VALUES (:lrn,:full_name,:id_number,:strand,:home_address,:guardian_name,:guardian_contact,:photo_blob,NOW())
         ");
-        $stmt->bindParam(':lrn',$lrn);
-        $stmt->bindParam(':full_name',$full_name);
-        $stmt->bindParam(':id_number',$id_number);
-        $stmt->bindParam(':strand',$strand);
-        $stmt->bindParam(':home_address',$home_address);
-        $stmt->bindParam(':guardian_name',$guardian_name);
-        $stmt->bindParam(':guardian_contact',$guardian_contact);
-        $stmt->bindParam(':photo',$photo_filename);
-        $stmt->bindParam(':photo_blob',$photo_blob,PDO::PARAM_LOB);
+        $stmt->bindParam(':lrn', $lrn);
+        $stmt->bindParam(':full_name', $full_name);
+        $stmt->bindParam(':id_number', $id_number);
+        $stmt->bindParam(':strand', $strand);
+        $stmt->bindParam(':home_address', $home_address);
+        $stmt->bindParam(':guardian_name', $guardian_name);
+        $stmt->bindParam(':guardian_contact', $guardian_contact);
+        $stmt->bindParam(':photo_blob', $photo_blob, PDO::PARAM_LOB);
         $stmt->execute();
 
         echo json_encode(['success'=>true,'msg'=>'Successfully Registered!']);
@@ -111,15 +115,9 @@ body{margin:0;font-family:"Segoe UI",Arial,sans-serif;background:#f0f4ff;display
     <div class="card">
         <h3>Register Student</h3>
         <form id="reg-form" enctype="multipart/form-data">
-            <div class="form-group">
-                <input type="text" name="lrn" placeholder=" " required><label>LRN</label>
-            </div>
-            <div class="form-group">
-                <input type="text" name="full_name" placeholder=" " required><label>Full Name</label>
-            </div>
-            <div class="form-group">
-                <input type="text" name="id_number" placeholder=" " required><label>ID Number</label>
-            </div>
+            <div class="form-group"><input type="text" name="lrn" placeholder=" " required><label>LRN</label></div>
+            <div class="form-group"><input type="text" name="full_name" placeholder=" " required><label>Full Name</label></div>
+            <div class="form-group"><input type="text" name="id_number" placeholder=" " required><label>ID Number</label></div>
             <div class="form-group">
                 <select name="strand" required>
                     <option value="" hidden></option>
@@ -131,18 +129,10 @@ body{margin:0;font-family:"Segoe UI",Arial,sans-serif;background:#f0f4ff;display
                 </select>
                 <label>Strand</label>
             </div>
-            <div class="form-group">
-                <input type="text" name="home_address" placeholder=" " required><label>Home Address</label>
-            </div>
-            <div class="form-group">
-                <input type="text" name="guardian_name" placeholder=" " required><label>Guardian's Name</label>
-            </div>
-            <div class="form-group">
-                <input type="text" name="guardian_contact" placeholder=" " required><label>Guardian's Contact</label>
-            </div>
-            <div class="form-group">
-                <input type="file" name="photo" accept="image/*" required><label>Upload Photo</label>
-            </div>
+            <div class="form-group"><input type="text" name="home_address" placeholder=" " required><label>Home Address</label></div>
+            <div class="form-group"><input type="text" name="guardian_name" placeholder=" " required><label>Guardian's Name</label></div>
+            <div class="form-group"><input type="text" name="guardian_contact" placeholder=" " required><label>Guardian's Contact</label></div>
+            <div class="form-group"><input type="file" name="photo" accept="image/*" required><label>Upload Photo</label></div>
             <button type="submit">Register</button>
         </form>
     </div>
@@ -150,7 +140,7 @@ body{margin:0;font-family:"Segoe UI",Arial,sans-serif;background:#f0f4ff;display
 
 <script>
 const form = document.getElementById('reg-form');
-form.addEventListener('submit',function(e){
+form.addEventListener('submit', function(e){
     e.preventDefault();
     const formData = new FormData(form);
 
