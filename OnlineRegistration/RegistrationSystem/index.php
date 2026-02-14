@@ -2,14 +2,32 @@
 session_start();
 require_once __DIR__ . '/../Config/database.php';
 
+// -------------------------
+// PHP runtime overrides
+// -------------------------
+ini_set('upload_max_filesize', '10M');
+ini_set('post_max_size', '10M');
+ini_set('max_execution_time', '300'); // optional for large files
+ini_set('max_input_time', '300');
+ini_set('memory_limit', '128M'); // enough for image resizing
+
 // Only show fatal errors in JSON output
 error_reporting(E_ERROR | E_PARSE);
 
-// Handle POST
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Clean output buffer
-    if (ob_get_level()) ob_end_clean();
+// -------------------------
+// Helper function: send JSON and exit
+// -------------------------
+function send_json($arr){
+    if(ob_get_level()) ob_end_clean();
     header('Content-Type: application/json');
+    echo json_encode($arr);
+    exit;
+}
+
+// -------------------------
+// Handle POST
+// -------------------------
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $lrn = trim($_POST['lrn'] ?? '');
     $full_name = trim($_POST['full_name'] ?? '');
@@ -21,23 +39,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // Validate required fields
     if (!$lrn || !$full_name || !$id_number || !$strand) {
-        echo json_encode(['success'=>false,'msg'=>'Please fill in all required fields.']);
-        exit;
+        send_json(['success'=>false,'msg'=>'Please fill in all required fields.']);
     }
 
     // Check file upload
     if (!isset($_FILES['photo'])) {
-        echo json_encode(['success'=>false,'msg'=>'No file uploaded']);
-        exit;
+        send_json(['success'=>false,'msg'=>'No file uploaded']);
     }
 
     $file = $_FILES['photo'];
 
-    // Handle all PHP upload errors
+    // Handle PHP upload errors
     $uploadErrors = [
         UPLOAD_ERR_OK => 'OK',
-        UPLOAD_ERR_INI_SIZE => 'File too large (ini_max)',
-        UPLOAD_ERR_FORM_SIZE => 'File too large (form_max)',
+        UPLOAD_ERR_INI_SIZE => 'File too large (server limit)',
+        UPLOAD_ERR_FORM_SIZE => 'File too large (form limit)',
         UPLOAD_ERR_PARTIAL => 'File partially uploaded',
         UPLOAD_ERR_NO_FILE => 'No file uploaded',
         UPLOAD_ERR_NO_TMP_DIR => 'Missing temp folder',
@@ -47,27 +63,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($file['error'] !== UPLOAD_ERR_OK) {
         $msg = $uploadErrors[$file['error']] ?? 'Unknown upload error';
-        echo json_encode(['success'=>false,'msg'=>"Upload error ($file[error]): $msg"]);
-        exit;
+        send_json(['success'=>false,'msg'=>"Upload error ($file[error]): $msg, file size: {$file['size']} bytes"]);
     }
 
+    // Validate image
     $tmp = $file['tmp_name'];
     $info = @getimagesize($tmp);
-    if (!$info) {
-        echo json_encode(['success'=>false,'msg'=>'Invalid image file']);
-        exit;
-    }
+    if (!$info) send_json(['success'=>false,'msg'=>'Invalid image file']);
 
-    // Resize to 300x400
+    // Manual file size check (10MB max)
+    $maxBytes = 10 * 1024 * 1024;
+    if ($file['size'] > $maxBytes) send_json(['success'=>false,'msg'=>'File too large (max 10MB)']);
+
+    // Resize image to 300x400
     $src = @imagecreatefromstring(file_get_contents($tmp));
-    if (!$src) {
-        echo json_encode(['success'=>false,'msg'=>'Cannot process image']);
-        exit;
-    }
+    if (!$src) send_json(['success'=>false,'msg'=>'Cannot process image']);
     $dst = imagecreatetruecolor(300, 400);
-    imagecopyresampled($dst, $src, 0, 0, 0, 0, 300, 400, imagesx($src), imagesy($src));
+    imagecopyresampled($dst, $src, 0,0,0,0, 300,400, imagesx($src), imagesy($src));
 
-    // Save image to memory for blob
+    // Save blob
     ob_start();
     imagejpeg($dst, null, 85);
     $photo_blob = ob_get_clean();
@@ -75,11 +89,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     imagedestroy($dst);
 
     // Backup filename
-    $photo_filename = $lrn . '_' . time() . '.jpg';
+    $photo_filename = $lrn.'_'.time().'.jpg';
     $backupDir = __DIR__ . '/../AdminSystem/Uploads/';
     if (!is_dir($backupDir)) mkdir($backupDir, 0777, true);
-    file_put_contents($backupDir . $photo_filename, $photo_blob);
+    file_put_contents($backupDir.$photo_filename, $photo_blob);
 
+    // Insert into database
     try {
         $stmt = $pdo->prepare("
             INSERT INTO register
@@ -97,16 +112,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->bindParam(':photo_blob', $photo_blob, PDO::PARAM_LOB);
         $stmt->execute();
 
-        echo json_encode(['success'=>true,'msg'=>'Successfully Registered!']);
-        exit;
-    } catch (PDOException $e) {
-        echo json_encode(['success'=>false,'msg'=>'Database error: '.$e->getMessage()]);
-        exit;
+        send_json(['success'=>true,'msg'=>'Successfully Registered!']);
+    } catch(PDOException $e){
+        send_json(['success'=>false,'msg'=>'Database error: '.$e->getMessage()]);
     }
 }
-
 ?>
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -169,7 +180,6 @@ body{margin:0;font-family:"Segoe UI",Arial,sans-serif;background:#f0f4ff;display
         </form>
     </div>
 </div>
-
 <script>
 const form = document.getElementById('reg-form');
 form.addEventListener('submit', async function(e){
@@ -179,6 +189,11 @@ form.addEventListener('submit', async function(e){
         alert('Please upload a photo');
         return;
     }
+    if(fileInput.files[0].size > 10*1024*1024){
+        alert('File too large (max 10MB)');
+        return;
+    }
+
 
     const formData = new FormData(form);
 
