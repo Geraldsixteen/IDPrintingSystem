@@ -83,12 +83,12 @@ body { margin:0; font-family:"Segoe UI",Arial,sans-serif; background:#f0f4ff; di
 .main { width:100%; max-width:480px; }
 
 /* Topbar */
-.topbar { text-align:center; margin-bottom:25px; }
+.topbar { background: white; width:100%; text-align:center; margin-bottom:25px; }
 .topbar img { width:80px; height:auto; display:block; margin:0 auto 10px; }
 .topbar h3 { margin:0; font-size:1.4rem; color:#002b80; }
 
 /* Card */
-.card { background:#fff; padding:25px; border-radius:15px; box-shadow:0 6px 20px rgba(0,0,0,0.1); }
+.card {  background:#fff; padding:25px; border-radius:15px; box-shadow:0 6px 20px rgba(0,0,0,0.1); }
 .card h3 { text-align:center; margin-bottom:20px; font-size:1.2rem; color:#002b80; }
 
 /* Floating Labels */
