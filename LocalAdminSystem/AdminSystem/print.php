@@ -44,14 +44,11 @@ $defaultPrinter = "L3110 Series";
 <title>Print Student IDs</title>
 <style>
 .photo img {
-    width: 50vw;
-    height: 40vh;
+    width: 100%;
+    height: 100%;
     object-fit: cover;
     border: 2px solid #000;
     border-radius: 8px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
     overflow: hidden;
 }   
 body{margin:0;font-family:"Segoe UI",Arial,sans-serif;background:#f4f4f4;}
