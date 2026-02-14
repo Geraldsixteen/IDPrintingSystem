@@ -80,7 +80,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <style>
 /* Reset & body */
 body { margin:0; font-family:"Segoe UI",Arial,sans-serif; background:#f0f4ff; display:flex; justify-content:center; padding:20px; }
-.main { width:100%; max-width:480px; }
+.main { width:100%; max-width:490px; }
 
 /* Topbar */
 .topbar { text-align:center; margin-bottom:25px; }
@@ -135,7 +135,7 @@ body { margin:0; font-family:"Segoe UI",Arial,sans-serif; background:#f0f4ff; di
 <body>
 <div class="main">
     <div class="topbar">
-        <img src="../Public/cdlb.png" alt="CDLB Logo">
+        <img src="../cdlb.png" alt="CDLB Logo">
         <h3>Senior High Student ID Registration</h3>
     </div>
     <div class="card">  
