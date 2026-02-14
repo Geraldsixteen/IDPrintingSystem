@@ -147,18 +147,9 @@ button:hover{ background:#2d3a80; }
 .success{background:#2ecc71;color:#fff;}
 .error{background:#e74c3c;color:#fff;}
 </style>
+
 <script src="../theme.js"></script>
-<script>
-function previewImage(input){
-    const preview=document.getElementById('photoPreview');
-    if(input.files && input.files[0]){
-        const reader=new FileReader();
-        reader.onload=e=>preview.src=e.target.result;
-        reader.readAsDataURL(input.files[0]);   
-        preview.style.display='block';
-    }
-}
-</script>
+
 </head>
 <body class="<?= $themeClass ?>">
 
@@ -216,10 +207,9 @@ function previewImage(input){
 
                 <label>Upload Photo (Leave empty to keep current)</label>
                 <input type="file" name="photo" accept="image/*" onchange="previewImage(this)">
-                <img id="photoPreview" class="current-photo" 
-                src="<?= displayPhoto($formData['photo'], true) ?: '../uploads/default.png' ?>" 
-                style="<?= empty($formData['photo']) ? 'display:none;' : '' ?>">
-
+                <div id="photoPreview">
+                    <?= displayPhoto($formData['photo'] ?? null, $formData['photo_blob'] ?? null) ?>
+                </div>
 
                 <button type="submit">Update Record</button>
             </form>
@@ -228,4 +218,18 @@ function previewImage(input){
 </div>
 
 </body>
+
+<script>
+function previewImage(input){
+    if(input.files && input.files[0]){
+        const reader = new FileReader();
+        reader.onload = e => {
+            document.getElementById('photoPreview').innerHTML =
+            "<img src='"+e.target.result+"' style='width:70px;height:90px;object-fit:cover;border:2px solid #000'>";
+        };
+        reader.readAsDataURL(input.files[0]);
+    }
+}
+</script>
+
 </html>
