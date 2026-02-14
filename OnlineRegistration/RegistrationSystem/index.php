@@ -135,7 +135,7 @@ body { margin:0; font-family:"Segoe UI",Arial,sans-serif; background:#f0f4ff; di
 <body>
 <div class="main">
     <div class="topbar">
-        <img src="../cdlb.png" alt="CDLB Logo">
+        <img src="cdlb.png" alt="CDLB Logo">
         <h3>Senior High Student ID Registration</h3>
     </div>
     <div class="card">  
