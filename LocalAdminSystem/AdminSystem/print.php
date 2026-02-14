@@ -43,17 +43,6 @@ $defaultPrinter = "L3110 Series";
 <meta charset="UTF-8">
 <title>Print Student IDs</title>
 <style>
-.photo {
-    width: 210px;
-    height: 210px;
-    margin: 20px auto 10px auto; /* top, sides auto for centering, bottom 10px */
-    border: 2px solid #000;
-    border-radius: 8px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    overflow: hidden;
-}
 .photo img {
     width: 100%;
     height: 100%;
