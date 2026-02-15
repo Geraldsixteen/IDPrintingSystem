@@ -1,18 +1,117 @@
-<?php 
+<?php  
 //require_once __DIR__ . '/admin-auth.php';
 require_once __DIR__ . '/../Config/database.php';
 require_once __DIR__ . '/photo-helper.php';
 
-// GET filters
+/* ================= TOGGLE STATUS ================= */
+if(isset($_POST['toggle_status'])){
+
+    $id = intval($_POST['toggle_status']);
+
+$stmt = $pdo->prepare("
+    UPDATE archive SET
+        status = CASE 
+            WHEN status = 'Released' THEN 'Pending'
+            ELSE 'Released'
+        END,
+        released_at = CASE
+            WHEN status = 'Released' THEN NULL
+            ELSE NOW()
+        END
+    WHERE id = ?
+");
+
+    $stmt->execute([$id]);
+
+    header("Location: archive.php");
+    exit;
+}
+/* ================= RESTORE SINGLE ================= */
+
+if(isset($_POST['restore_id'])){
+
+    $id = intval($_POST['restore_id']);
+
+    $pdo->beginTransaction();
+
+    try{
+
+        $stmt = $pdo->prepare("SELECT * FROM archive WHERE id=?");
+        $stmt->execute([$id]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if($row){
+
+            $check = $pdo->prepare("SELECT id FROM register WHERE id_number=?");
+            $check->execute([$row['id_number']]);
+
+            if(!$check->fetch()){
+
+                $insert = $pdo->prepare("
+                    INSERT INTO register
+                    (
+                        lrn,
+                        full_name,
+                        id_number,
+                        grade,
+                        strand,
+                        course,
+                        home_address,
+                        guardian_name,
+                        guardian_contact,
+                        photo,
+                        photo_blob,
+                        created_at,
+                        restored_at
+                    )
+                    VALUES
+                    (
+                        ?,?,?,?,?,?,?,?,?,?,?,?,NOW()
+                    )
+                ");
+
+                $insert->execute([
+                    $row['lrn'],
+                    $row['full_name'],
+                    $row['id_number'],
+                    $row['grade'],
+                    $row['strand'],
+                    $row['course'],
+                    $row['home_address'],
+                    $row['guardian_name'],
+                    $row['guardian_contact'],
+                    $row['photo'],
+                    $row['photo_blob'],
+                    $row['created_at']   // ⭐ ORIGINAL REGISTER DATE
+                ]);
+            }
+
+            $pdo->prepare("DELETE FROM archive WHERE id=?")->execute([$id]);
+        }
+
+        $pdo->commit();
+
+        header("Location: archive.php");
+        exit;
+
+    }catch(Exception $e){
+
+        $pdo->rollBack();
+        die("Restore failed: ".$e->getMessage());
+    }
+}
+
+
+// ================= FILTERS =================
 $search = $_GET['search'] ?? '';
 $grade  = $_GET['grade'] ?? '';
 $strand = $_GET['strand'] ?? '';
 $course = $_GET['course'] ?? '';
 
-// ================== Theme ==================
+// ================= THEME =================
 $themeClass = ($_COOKIE['theme'] ?? '') === 'dark' ? 'dark' : '';
 
-// ================== Build SQL with Filters ==================
+// ================= QUERY BUILD =================
 $sql = "SELECT * FROM archive WHERE 1=1";
 $params = [];
 
@@ -22,7 +121,7 @@ if ($search !== '') {
     $params[':search'] = "%$search%";
 }
 
-// Grade/Strand/Course filters
+// Grade / Strand / Course
 if ($grade !== '')  { $sql .= " AND grade = :grade";   $params[':grade'] = $grade; }
 if ($strand !== '') { $sql .= " AND strand = :strand"; $params[':strand'] = $strand; }
 if ($course !== '') { $sql .= " AND course = :course"; $params[':course'] = $course; }
@@ -32,25 +131,23 @@ $stmt = $pdo->prepare($sql);
 $stmt->execute($params);
 $result = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-// ================== Filter Links ==================
-$currentParams = compact('search', 'grade', 'strand', 'course');
-
+// ================= FILTER LINKS =================
+$currentParams = compact('search','grade','strand','course');
 function buildLink($params, $value='', $type='') {
     if ($type && $value) {
         $params[$type] = $value;
-        if ($type === 'grade')  unset($params['strand'], $params['course']);
-        if ($type === 'strand') unset($params['grade'], $params['course']);
-        if ($type === 'course') unset($params['grade'], $params['strand']);
+        if ($type === 'grade')  unset($params['strand'],$params['course']);
+        if ($type === 'strand') unset($params['grade'],$params['course']);
+        if ($type === 'course') unset($params['grade'],$params['strand']);
     }
     return '?'.http_build_query($params);
 }
 
-// ================== Filter Options ==================
+// ================= FILTER OPTIONS =================
 $juniorGrades = ['Grade 7','Grade 8','Grade 9','Grade 10'];
 $seniorStrands = ['HUMMS','ABM','STEM','GAS','ICT'];
 $courses = ['BSIT','BSBA','BSHM','BEED','BSED'];
 ?>
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -175,18 +272,10 @@ img{width:70px;height:90px;object-fit:cover;border-radius:6px;border:2px solid #
                 <button type="submit">Search</button>
             </form>
 
-            <!-- Batch Action Buttons -->
-            <div style="margin-bottom:10px;">
-                <button class="batch-btn" id="restoreSelected">🔄 Restore Selected</button>
-                <button class="batch-btn" id="toggleSelected">🔁 Toggle Status Selected</button>
-                <button class="batch-btn" id="printSelected">🖨️ Print Selected</button>
-            </div>
-
             <!-- Table -->
             <table>
                 <thead>
                     <tr>
-                        <th class="checkbox-col"><input type="checkbox" id="selectAll"></th>
                         <th>LRN</th>
                         <th>Full Name</th>
                         <th>ID Number</th>
@@ -205,7 +294,6 @@ img{width:70px;height:90px;object-fit:cover;border-radius:6px;border:2px solid #
                     <?php if($result): ?>
                         <?php foreach($result as $row): ?>
                         <tr>
-                            <td><input type="checkbox" class="rowCheckbox" value="<?= $row['id'] ?>"></td>
                             <td><?= htmlspecialchars($row['lrn']) ?></td>
                             <td><?= htmlspecialchars($row['full_name']) ?></td>
                             <td><?= htmlspecialchars($row['id_number']) ?></td>
@@ -240,56 +328,5 @@ img{width:70px;height:90px;object-fit:cover;border-radius:6px;border:2px solid #
 </div>
 
 <script src="../theme.js"></script>
-<script>
-// Select All
-document.getElementById('selectAll').addEventListener('change', function(){
-    const checked = this.checked;
-    document.querySelectorAll('.rowCheckbox').forEach(cb => cb.checked = checked);
-});
-
-// Batch Restore
-document.getElementById('restoreSelected').addEventListener('click', function(){
-    const ids = Array.from(document.querySelectorAll('.rowCheckbox:checked')).map(cb=>cb.value);
-    if(ids.length===0){ alert('Select at least one student'); return; }
-    if(!confirm('Restore selected records?')) return;
-
-    fetch('batch-archive.php', {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({action:'restore', ids})
-    })
-    .then(res=>res.json())
-    .then(data=>{
-        alert(data.msg);
-        if(data.success) location.reload();
-    });
-});
-
-// Batch Toggle Status
-document.getElementById('toggleSelected').addEventListener('click', function(){
-    const ids = Array.from(document.querySelectorAll('.rowCheckbox:checked')).map(cb=>cb.value);
-    if(ids.length===0){ alert('Select at least one student'); return; }
-
-    fetch('batch-archive.php', {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({action:'toggle', ids})
-    })
-    .then(res=>res.json())
-    .then(data=>{
-        alert(data.msg);
-        if(data.success) location.reload();
-    });
-});
-
-// Batch Print
-document.getElementById('printSelected').addEventListener('click', function(){
-    const ids = Array.from(document.querySelectorAll('.rowCheckbox:checked')).map(cb=>cb.value);
-    if(ids.length===0){ alert('Select at least one student'); return; }
-
-    // Open multiple print windows
-    ids.forEach(id => window.open('print.php?id='+id, '_blank'));
-});
-</script>
 </body>
 </html>

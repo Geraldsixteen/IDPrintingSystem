@@ -1,8 +1,8 @@
-<?php
+<?php  
 session_start();
 require_once __DIR__ . '/../Config/database.php';
 
-// Ensure large uploads work (server fallback)
+// Ensure large uploads work
 ini_set('upload_max_filesize', '10M');
 ini_set('post_max_size', '12M');
 ini_set('max_execution_time', '300');
@@ -19,16 +19,16 @@ function send_json($arr){
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
-    $lrn = isset($_POST['lrn']) ? trim($_POST['lrn']) : '';
-    $full_name = isset($_POST['full_name']) ? trim($_POST['full_name']) : '';
-    $id_number = isset($_POST['id_number']) ? trim($_POST['id_number']) : '';
-    $strand = isset($_POST['strand']) ? trim($_POST['strand']) : '';
-    $home_address = isset($_POST['home_address']) ? trim($_POST['home_address']) : '';
-    $guardian_name = isset($_POST['guardian_name']) ? trim($_POST['guardian_name']) : '';
-    $guardian_contact = isset($_POST['guardian_contact']) ? trim($_POST['guardian_contact']) : '';
-    $photo_base64 = isset($_POST['photo_base64']) ? $_POST['photo_base64'] : '';
+    $level = $_POST['level'] ?? ''; // junior, senior, college
+    $lrn = trim($_POST['lrn'] ?? '');
+    $full_name = trim($_POST['full_name'] ?? '');
+    $strand = trim($_POST['strand'] ?? '');
+    $home_address = trim($_POST['home_address'] ?? '');
+    $guardian_name = trim($_POST['guardian_name'] ?? '');
+    $guardian_contact = trim($_POST['guardian_contact'] ?? '');
+    $photo_base64 = $_POST['photo_base64'] ?? '';
 
-    if (!$lrn || !$full_name || !$id_number || !$strand) {
+    if (!$lrn || !$full_name || (!$strand && $level != 'college')) {
         send_json(['success'=>false,'msg'=>'Please fill in all required fields.']);
     }
 
@@ -36,40 +36,56 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         send_json(['success'=>false,'msg'=>'No photo uploaded']);
     }
 
-    // Strip data URL prefix if present
     if (preg_match('/^data:image\/\w+;base64,/', $photo_base64)) {
         $photo_base64 = preg_replace('/^data:image\/\w+;base64,/', '', $photo_base64);
     }
 
     $image_data = base64_decode($photo_base64);
-    if (!$image_data) {
-        send_json(['success'=>false,'msg'=>'Invalid image data']);
-    }
+    if (!$image_data) send_json(['success'=>false,'msg'=>'Invalid image data']);
 
     $photo_filename = $lrn . '_' . time() . '.jpg';
 
     try {
         $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-        // Check duplicate
+        // ===== AUTO-GENERATE ID NUMBER =====
+        $currentYear = date('y'); // e.g., '26'
+        $prefix = 'S' . $currentYear . '-';
+        $stmtId = $pdo->prepare("SELECT id_number FROM register WHERE id_number LIKE :prefix ORDER BY id_number DESC LIMIT 1");
+        $stmtId->execute([':prefix' => $prefix . '%']);
+        $lastId = $stmtId->fetchColumn();
+        if ($lastId) {
+            $num = intval(substr($lastId, 4)) + 1;
+        } else {
+            $num = 1;
+        }
+        $id_number = $prefix . str_pad($num, 4, '0', STR_PAD_LEFT);
+        // ====================================
+
+        // Check if LRN exists
         $check = $pdo->prepare("SELECT COUNT(*) FROM register WHERE lrn=:lrn OR id_number=:id_number");
         $check->execute([':lrn'=>$lrn, ':id_number'=>$id_number]);
-        if ($check->fetchColumn() > 0) {
-            send_json(['success'=>false,'msg'=>'LRN or ID Number already exists']);
-        }
+        if ($check->fetchColumn() > 0) send_json(['success'=>false,'msg'=>'This LRN is already registered.']);
 
         $stmt = $pdo->prepare("
             INSERT INTO register
-            (lrn, full_name, id_number, strand, home_address, guardian_name, guardian_contact, photo, photo_blob, created_at)
+            (lrn, full_name, id_number, grade, strand, course, home_address, guardian_name, guardian_contact, photo, photo_blob, created_at)
             VALUES
-            (:lrn, :full_name, :id_number, :strand, :home_address, :guardian_name, :guardian_contact, :photo, :photo_blob, NOW())
+            (:lrn, :full_name, :id_number, :grade, :strand, :course, :home_address, :guardian_name, :guardian_contact, :photo, :photo_blob, NOW())
         ");
+
+        // Map level to fields
+        $grade = $level === 'junior' ? $strand : null;
+        $course = $level === 'college' ? $strand : null;
+        $strand_val = $level === 'senior' ? $strand : null;
 
         $stmt->execute([
             ':lrn' => $lrn,
             ':full_name' => $full_name,
             ':id_number' => $id_number,
-            ':strand' => $strand,
+            ':grade' => $grade,
+            ':strand' => $strand_val,
+            ':course' => $course,
             ':home_address' => $home_address,
             ':guardian_name' => $guardian_name,
             ':guardian_contact' => $guardian_contact,
@@ -80,7 +96,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         send_json([
             'success' => true,
             'msg' => 'Successfully Registered!',
-            'photo_base64' => 'data:image/jpeg;base64,' . $photo_base64
+            'photo_base64' => 'data:image/jpeg;base64,' . $photo_base64,
+            'id_number' => $id_number
         ]);
 
     } catch(PDOException $e){
@@ -93,14 +110,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Senior High Registration</title>
+<title>Student Registration</title>
 <style>
+/* ... keep your existing CSS ... */
+.photoPreview {
+    display: block;
+    margin: 10px auto;
+    width: 150px;
+    height: 200px;
+    object-fit: cover;
+    border-radius: 10px;
+    border: 1px solid #ccc;
+}
 body{margin:0;font-family:"Segoe UI",Arial,sans-serif;background:#f0f4ff;display:flex;justify-content:center;padding:20px;}
-.main{width:100%;max-width:500px;}
+.main{width:100%;max-width:600px;}
 .topbar{background:white;text-align:center;margin-bottom:20px;}
 .topbar img{width:80px;display:block;margin:0 auto 10px;}
 .topbar h3{margin:0;color:#002b80;}
-.card{margin:0 10px;background:#fff;padding:25px;border-radius:15px;box-shadow:0 6px 20px rgba(0,0,0,0.1);}
+.card{background:#fff;padding:25px;border-radius:15px;box-shadow:0 6px 20px rgba(0,0,0,0.1);}
 .card h3{text-align:center;margin-bottom:20px;color:#002b80;}
 .form-group{position:relative;margin-bottom:18px;}
 .form-group input,.form-group select{width:95%;padding:14px;border-radius:10px;border:1px solid #ccc;font-size:14px;background:transparent;}
@@ -112,21 +139,62 @@ body{margin:0;font-family:"Segoe UI",Arial,sans-serif;background:#f0f4ff;display
 .card button{margin-top:10px;width:100%;padding:14px;border:none;border-radius:12px;background:#002b80;color:white;font-weight:600;font-size:16px;cursor:pointer}
 .card button:hover{background:#1f2857}
 #popupMsg{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#28a745;color:white;padding:20px;border-radius:12px;font-weight:600;display:none;text-align:center;min-width:220px;max-width:90%;}
+
 #photoPreview{display:block;margin:10px auto;width:150px;height:200px;object-fit:cover;border-radius:10px;border:1px solid #ccc;}
+.tabs{display:flex;justify-content:center;margin-bottom:15px;gap:10px;}
+.tab-btn{flex:1;background-color:#3498db;color:white;border:none;padding:10px 0;border-radius:8px 8px 0 0;cursor:pointer;font-weight:600;transition:0.2s;}
+.tab-btn:hover{background-color:#5dade2;}
+.tab-btn.active{background-color:#002b80;}
+.reg-form{display:none;}
+.reg-form.active{display:block;}
+</style>
 </style>
 </head>
 <body>
 <div class="main">
 <div class="topbar">
-<img src="cdlb.png" alt="CDLB Logo">
-<h3>Senior High Student ID Registration</h3>
+<img src="cdlb.png" alt="Logo">
+<h3>Student ID Registration</h3>
 </div>
-<div class="card">
-<h3>Register Student</h3>
-<form id="reg-form">
+
+<div class="tabs">
+  <button class="tab-btn active" data-target="juniorHigh">Junior High</button>
+  <button class="tab-btn" data-target="seniorHigh">Senior High</button>
+  <button class="tab-btn" data-target="college">College</button>
+</div>
+
+<!-- JUNIOR HIGH FORM -->
+<div class="card reg-form active" id="juniorHighForm">
+<h3>Register Junior High Student</h3>
+<form class="reg-form-inner" data-level="junior">
 <div class="form-group"><input type="text" name="lrn" placeholder=" " required><label>LRN</label></div>
 <div class="form-group"><input type="text" name="full_name" placeholder=" " required><label>Full Name</label></div>
-<div class="form-group"><input type="text" name="id_number" placeholder=" " required><label>ID Number</label></div>
+<!-- ID number input removed -->
+<div class="form-group">
+<select name="strand" required>
+<option value="" hidden></option>
+<option value="Grade 7">Grade 7</option>
+<option value="Grade 8">Grade 8</option>
+<option value="Grade 9">Grade 9</option>
+<option value="Grade 10">Grade 10</option>
+</select>
+<label>Grade</label>
+</div>
+<div class="form-group"><input type="text" name="home_address" placeholder=" " required><label>Home Address</label></div>
+<div class="form-group"><input type="text" name="guardian_name" placeholder=" " required><label>Guardian's Name</label></div>
+<div class="form-group"><input type="text" name="guardian_contact" placeholder=" " required><label>Guardian's Contact</label></div>
+<div class="form-group"><input type="file" class="photoInput" accept="image/*" required><img class="photoPreview" src="" alt="Photo Preview"></div>
+<button type="submit">Register</button>
+</form>
+</div>
+
+<!-- SENIOR HIGH FORM -->
+<div class="card reg-form" id="seniorHighForm">
+<h3>Register Senior High Student</h3>
+<form class="reg-form-inner" data-level="senior">
+<div class="form-group"><input type="text" name="lrn" placeholder=" " required><label>LRN</label></div>
+<div class="form-group"><input type="text" name="full_name" placeholder=" " required><label>Full Name</label></div>
+<!-- ID number input removed -->
 <div class="form-group">
 <select name="strand" required>
 <option value="" hidden></option>
@@ -141,91 +209,105 @@ body{margin:0;font-family:"Segoe UI",Arial,sans-serif;background:#f0f4ff;display
 <div class="form-group"><input type="text" name="home_address" placeholder=" " required><label>Home Address</label></div>
 <div class="form-group"><input type="text" name="guardian_name" placeholder=" " required><label>Guardian's Name</label></div>
 <div class="form-group"><input type="text" name="guardian_contact" placeholder=" " required><label>Guardian's Contact</label></div>
-<div class="form-group">
-<input type="file" id="photoInput" accept="image/*" required>
-<img id="photoPreview" src="" alt="Photo Preview">
-</div>
+<div class="form-group"><input type="file" class="photoInput" accept="image/*" required><img class="photoPreview" src="" alt="Photo Preview"></div>
 <button type="submit">Register</button>
 </form>
 </div>
+
+<!-- COLLEGE FORM -->
+<div class="card reg-form" id="collegeForm">
+<h3>Register College Student</h3>
+<form class="reg-form-inner" data-level="college">
+<div class="form-group"><input type="text" name="lrn" placeholder=" " required><label>LRN</label></div>
+<div class="form-group"><input type="text" name="full_name" placeholder=" " required><label>Full Name</label></div>
+<!-- ID number input removed -->
+<div class="form-group">
+<select name="strand" required>
+<option value="" hidden></option>
+<option value="BSIT">BSIT</option>
+<option value="BSBA">BSBA</option>
+<option value="BSHM">BSHM</option>
+<option value="BEED">BEED</option>
+<option value="BSED">BSED</option>
+</select>
+<label>Course</label>
+</div>
+<div class="form-group"><input type="text" name="home_address" placeholder=" " required><label>Home Address</label></div>
+<div class="form-group"><input type="text" name="guardian_name" placeholder=" " required><label>Guardian's Name</label></div>
+<div class="form-group"><input type="text" name="guardian_contact" placeholder=" " required><label>Guardian's Contact</label></div>
+<div class="form-group"><input type="file" class="photoInput" accept="image/*" required><img class="photoPreview" src="" alt="Photo Preview"></div>
+<button type="submit">Register</button>
+</form>
+</div>
+
+<div id="popupMsg"></div>
 </div>
 
 <script>
-const form = document.getElementById('reg-form');
-const preview = document.getElementById('photoPreview');
-const photoInput = document.getElementById('photoInput');
-
-let resizedPhotoBase64 = '';
-
-photoInput.addEventListener('change', e => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = function(ev){
-        const img = new Image();
-        img.onload = function(){
-            const maxWidth = 800;
-            const maxHeight = 1000;
-            let w = img.width;
-            let h = img.height;
-
-            if (w > maxWidth) { h = h * (maxWidth/w); w = maxWidth; }
-            if (h > maxHeight) { w = w * (maxHeight/h); h = maxHeight; }
-
-            const canvas = document.createElement('canvas');
-            canvas.width = w;
-            canvas.height = h;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(img,0,0,w,h);
-            resizedPhotoBase64 = canvas.toDataURL('image/jpeg', 0.85);
-            preview.src = resizedPhotoBase64;
-        }
-        img.src = ev.target.result;
-    }
-    reader.readAsDataURL(file);
+// Tab switching
+const tabs = document.querySelectorAll('.tab-btn');
+const forms = document.querySelectorAll('.reg-form');
+tabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+        tabs.forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        forms.forEach(f => f.classList.remove('active'));
+        document.getElementById(tab.dataset.target + 'Form').classList.add('active');
+    });
 });
 
-form.addEventListener('submit', async e => {
-    e.preventDefault();
+document.querySelectorAll('.reg-form-inner').forEach(form => {
+    const photoInput = form.querySelector('.photoInput');
+    const preview = form.querySelector('.photoPreview');
+    let resizedPhotoBase64 = '';
 
-    if (!resizedPhotoBase64) {
-        alert('Please select a photo');
-        return;
-    }
+    preview.src = '';
 
-    const fd = new FormData();
-    for (let input of form.elements) {
-        if (input.name && input.type !== 'file') fd.append(input.name, input.value);
-    }
-    fd.append('photo_base64', resizedPhotoBase64);
-
-    try {
-        const res = await fetch('index.php', { method: 'POST', body: fd });
-        const text = await res.text();
-
-        let data;
-        try { data = JSON.parse(text); }
-        catch(err){ throw new Error("Invalid JSON: " + text); }
-
-        if (data.success) {
-            const p = document.createElement('div');
-            p.id = 'popupMsg';
-            p.innerHTML = '<div>✔</div>' + data.msg;
-            document.body.appendChild(p);
-            p.classList.add('show');
-
-            form.reset();
-            preview.src = '';
-            resizedPhotoBase64 = '';
-
-            setTimeout(() => p.remove(), 2500);
-        } else {
-            alert(data.msg);
+    photoInput.addEventListener('change', e => {
+        const file = e.target.files[0];
+        if(!file){ preview.src=''; return; }
+        const reader = new FileReader();
+        reader.onload = function(ev){
+            const img = new Image();
+            img.onload = function(){
+                const maxWidth = 800, maxHeight = 1000;
+                let w=img.width,h=img.height;
+                if(w>maxWidth){h=h*(maxWidth/w);w=maxWidth;}
+                if(h>maxHeight){w=w*(maxHeight/h);h=maxHeight;}
+                const canvas=document.createElement('canvas');
+                canvas.width=w; canvas.height=h;
+                canvas.getContext('2d').drawImage(img,0,0,w,h);
+                resizedPhotoBase64=canvas.toDataURL('image/jpeg',0.85);
+                preview.src=resizedPhotoBase64;
+            }
+            img.src=ev.target.result;
         }
-    } catch(err) {
-        alert('Submit failed: ' + err.message);
-    }
+        reader.readAsDataURL(file);
+    });
+
+    form.addEventListener('submit', async e => {
+        e.preventDefault();
+        if(!resizedPhotoBase64){alert('Please select a photo'); return;}
+        const fd = new FormData();
+        fd.append('level', form.dataset.level);
+        for(let input of form.elements){
+            if(input.name && input.type!=='file') fd.append(input.name,input.value);
+        }
+        fd.append('photo_base64',resizedPhotoBase64);
+        try{
+            const res = await fetch('index.php',{method:'POST',body:fd});
+            const data = await res.json();
+            if(data.success){
+                const p=document.getElementById('popupMsg');
+                p.innerHTML='✔ '+data.msg+'<br>ID Number: '+data.id_number;
+                p.style.display='block';
+                setTimeout(()=>p.style.display='none',2500);
+                preview.src=data.photo_base64;
+                form.querySelectorAll('input:not([type=file]), select').forEach(i=>i.value='');
+                resizedPhotoBase64='';
+            } else alert(data.msg);
+        } catch(err){alert('Submit failed: '+err.message);}
+    });
 });
 </script>
 </body>

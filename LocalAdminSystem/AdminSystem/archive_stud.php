@@ -1,87 +1,64 @@
-<?php 
-require_once __DIR__ . '/admin-auth.php';
+<?php
 require_once __DIR__ . '/../Config/database.php';
 
-if (!isset($_SESSION['admin_id'])) {
-    http_response_code(403);
-    echo "Unauthorized";
-    exit;
+if ($_SERVER['REQUEST_METHOD'] !== 'POST' || empty($_POST['id'])) {
+    exit("Invalid request");
 }
 
-// ================= HANDLE POST =================
-// Accept either single id (id=1) or multiple ids (ids=1,2,3)
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+$id = intval($_POST['id']);
 
-    $ids = [];
+try {
+    // Fetch student from register
+    $stmt = $pdo->prepare("SELECT * FROM register WHERE id=?");
+    $stmt->execute([$id]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
-    // Multiple IDs from "ids" parameter (comma-separated)
-    if (!empty($_POST['ids'])) {
-        $ids = array_filter(array_map('intval', explode(',', $_POST['ids'])));
-    } 
-    // Single ID from "id" parameter
-    elseif (!empty($_POST['id'])) {
-        $ids[] = intval($_POST['id']);
+    if (!$row) {
+        exit("Student not found");
     }
 
-    if (empty($ids)) {
-        echo "No valid student IDs provided";
+    // Check if already archived
+    $stmtCheck = $pdo->prepare("SELECT id FROM archive WHERE id_number = ?");
+    $stmtCheck->execute([$row['id_number']]);
+    $archived = $stmtCheck->fetch(PDO::FETCH_ASSOC);
+
+    if ($archived) {
+        // Already archived: update printed_at timestamp instead of inserting duplicate
+        $update = $pdo->prepare("UPDATE archive SET printed_at = NOW() WHERE id = ?");
+        $update->execute([$archived['id']]);
+        echo "already archived";
         exit;
     }
 
-    try {
-        $pdo->beginTransaction();
+    // Not archived yet: insert into archive
+    $insert = $pdo->prepare("
+        INSERT INTO archive
+        (lrn, full_name, id_number, grade, strand, course, home_address,
+         guardian_name, guardian_contact, photo, photo_blob, created_at, printed_at, status)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?, ?, NOW(), 'Not Released')
+    ");
 
-        // Fetch all students
-        $inQuery = implode(',', array_fill(0, count($ids), '?'));
-        $stmt = $pdo->prepare("SELECT * FROM register WHERE id IN ($inQuery)");
-        $stmt->execute($ids);
-        $students = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $insert->execute([
+        $row['lrn'],
+        $row['full_name'],
+        $row['id_number'],
+        $row['grade'],
+        $row['strand'],
+        $row['course'],
+        $row['home_address'],
+        $row['guardian_name'],
+        $row['guardian_contact'],
+        $row['photo'] ?? null,
+        $row['photo_blob'] ?? null,
+        $row['created_at'] ?? date('Y-m-d H:i:s')
+    ]);
 
-        if (!$students) {
-            echo "No students found";
-            exit;
-        }
+    // Delete from register
+    $pdo->prepare("DELETE FROM register WHERE id=?")->execute([$id]);
 
-        // Insert into archive
-        $stmtInsert = $pdo->prepare("
-            INSERT INTO archive
-            (lrn, full_name, id_number, grade, strand, course, home_address, guardian_name, guardian_contact, photo, photo_blob, created_at, printed_at, status)
-            VALUES
-            (:lrn, :full_name, :id_number, :grade, :strand, :course, :home_address, :guardian_name, :guardian_contact, :photo, :photo_blob, :created_at, NOW(), 'Not Released')
-        ");
+    echo "ok";
 
-        foreach ($students as $row) {
-            $stmtInsert->execute([
-                ':lrn' => $row['lrn'],
-                ':full_name' => $row['full_name'],
-                ':id_number' => $row['id_number'],
-                ':grade' => $row['grade'],
-                ':strand' => $row['strand'],
-                ':course' => $row['course'],
-                ':home_address' => $row['home_address'],
-                ':guardian_name' => $row['guardian_name'],
-                ':guardian_contact' => $row['guardian_contact'],
-                ':photo' => $row['photo'] ?? null,
-                ':photo_blob' => $row['photo_blob'] ?? null,
-                ':created_at' => $row['created_at'] ?? date('Y-m-d H:i:s'),
-            ]);
-        }
-
-        // Delete from register
-        $stmtDel = $pdo->prepare("DELETE FROM register WHERE id IN ($inQuery)");
-        $stmtDel->execute($ids);
-
-        $pdo->commit();
-        echo "ok";
-        exit;
-
-    } catch (PDOException $e) {
-        $pdo->rollBack();
-        http_response_code(500);
-        echo "Database error: " . $e->getMessage();
-        exit;
-    }
-
-} else {
-    echo "Invalid request";
+} catch (Exception $e) {
+    http_response_code(500);
+    echo "Archive failed: " . $e->getMessage();
 }
