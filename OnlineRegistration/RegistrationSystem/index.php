@@ -140,7 +140,16 @@ body{margin:0;font-family:"Segoe UI",Arial,sans-serif;background:#f0f4ff;display
 .card button:hover{background:#1f2857}
 #popupMsg{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#28a745;color:white;padding:20px;border-radius:12px;font-weight:600;display:none;text-align:center;min-width:220px;max-width:90%;}
 
-#photoPreview{display:block;margin:10px auto;width:150px;height:200px;object-fit:cover;border-radius:10px;border:1px solid #ccc;}
+.photoPreview {
+    display: none; /* hide by default */
+    margin: 10px auto;
+    width: 150px;
+    height: 200px;
+    object-fit: cover;
+    border-radius: 10px;
+    border: 1px solid #ccc;
+}
+
 .tabs{display:flex;justify-content:center;margin-bottom:15px;gap:10px;}
 .tab-btn{flex:1;background-color:#3498db;color:white;border:none;padding:10px 0;border-radius:8px 8px 0 0;cursor:pointer;font-weight:600;transition:0.2s;}
 .tab-btn:hover{background-color:#5dade2;}
@@ -264,26 +273,32 @@ document.querySelectorAll('.reg-form-inner').forEach(form => {
     preview.src = '';
 
     photoInput.addEventListener('change', e => {
-        const file = e.target.files[0];
-        if(!file){ preview.src=''; return; }
-        const reader = new FileReader();
-        reader.onload = function(ev){
-            const img = new Image();
-            img.onload = function(){
-                const maxWidth = 800, maxHeight = 1000;
-                let w=img.width,h=img.height;
-                if(w>maxWidth){h=h*(maxWidth/w);w=maxWidth;}
-                if(h>maxHeight){w=w*(maxHeight/h);h=maxHeight;}
-                const canvas=document.createElement('canvas');
-                canvas.width=w; canvas.height=h;
-                canvas.getContext('2d').drawImage(img,0,0,w,h);
-                resizedPhotoBase64=canvas.toDataURL('image/jpeg',0.85);
-                preview.src=resizedPhotoBase64;
-            }
-            img.src=ev.target.result;
+    const file = e.target.files[0];
+    if(!file){
+        preview.src='';
+        preview.style.display = 'none'; // hide if no file
+        return;
+    }
+    const reader = new FileReader();
+    reader.onload = function(ev){
+        const img = new Image();
+        img.onload = function(){
+            const maxWidth = 800, maxHeight = 1000;
+            let w=img.width,h=img.height;
+            if(w>maxWidth){h=h*(maxWidth/w);w=maxWidth;}
+            if(h>maxHeight){w=w*(maxHeight/h);h=maxHeight;}
+            const canvas=document.createElement('canvas');
+            canvas.width=w; canvas.height=h;
+            canvas.getContext('2d').drawImage(img,0,0,w,h);
+            resizedPhotoBase64 = canvas.toDataURL('image/jpeg',0.85);
+            preview.src = resizedPhotoBase64;
+            preview.style.display = 'block'; // show after selection
         }
-        reader.readAsDataURL(file);
-    });
+        img.src = ev.target.result;
+    }
+    reader.readAsDataURL(file);
+});
+
 
     form.addEventListener('submit', async e => {
         e.preventDefault();
