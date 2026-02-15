@@ -3,11 +3,6 @@
 require_once __DIR__ . '/../Config/database.php';
 require_once __DIR__ . '/photo-helper.php';
 
-if (!isset($_SESSION['admin_id'])) {
-    header("Location: login.php");
-    exit;
-}
-
 // ================= GET STUDENTS =================
 $idsArray = [];
 

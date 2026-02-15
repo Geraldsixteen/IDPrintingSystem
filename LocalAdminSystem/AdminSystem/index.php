@@ -2,10 +2,6 @@
 //require_once __DIR__ . '/admin-auth.php';
 require_once __DIR__ . '/../Config/database.php';
 
-if (!isset($_SESSION['admin_id'])) {
-    header("Location: login.php");
-    exit;
-}
 
 $themeClass = (isset($_COOKIE['theme']) && $_COOKIE['theme'] === 'dark') ? 'dark' : '';
 ?>

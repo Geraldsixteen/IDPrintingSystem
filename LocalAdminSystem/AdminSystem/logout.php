@@ -2,11 +2,6 @@
 //require_once __DIR__ . '/admin-auth.php';
 require_once __DIR__ . '/../Config/database.php';
 
-if (!isset($_SESSION['admin_id'])) {
-    header("Location: login.php");
-    exit;
-}
-
 // Clear remember-me cookies
 setcookie('remember_username', '', time() - 3600, "/");
 setcookie('remember_token', '', time() - 3600, "/");

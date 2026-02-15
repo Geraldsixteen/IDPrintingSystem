@@ -2,12 +2,6 @@
 //require_once __DIR__ . '/admin-auth.php';
 require_once __DIR__ . '/../Config/database.php';
 
-// If already logged in → go dashboard
-if (isset($_SESSION['admin_id'])) {
-    header("Location: index.php");
-    exit;
-}
-
 $err = "";
 
 // 🔹 Auto-login using Remember Me cookies
