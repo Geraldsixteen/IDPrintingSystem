@@ -1,5 +1,5 @@
 <?php
-require_once __DIR__ . '/admin-auth.php';
+//require_once __DIR__ . '/admin-auth.php';
 require_once __DIR__ . '/../Config/database.php';
 
 // If already logged in → go dashboard
