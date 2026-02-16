@@ -1,5 +1,5 @@
 <?php
-//require_once __DIR__ . '/admin-auth.php';
+require_once __DIR__ . '/admin-auth.php';
 require_once __DIR__ . '/../Config/database.php';
 require_once __DIR__ . '/photo-helper.php';
 
@@ -10,7 +10,7 @@ $id = intval($_GET['id']);
 
 /* FETCH RECORD */
 $stmt = $pdo->prepare("SELECT * FROM register WHERE id=:id");
-$stmt->execute(['id'=>$id]);
+$stmt->execute([':id'=>$id]);
 $formData = $stmt->fetch(PDO::FETCH_ASSOC);
 if(!$formData) die("Record not found.");
 
@@ -24,108 +24,109 @@ if(!is_dir($uploadDir)) mkdir($uploadDir,0777,true);
 /* FORM SUBMIT */
 if($_SERVER['REQUEST_METHOD']==='POST'){
 
-    $fields=['lrn','full_name','id_number','grade','strand','course','home_address','guardian_name','guardian_contact'];
+    // Collect form fields
+    $fields = ['lrn','full_name','grade','strand','course','home_address','guardian_name','guardian_contact'];
     foreach($fields as $f){
-        $formData[$f]=trim($_POST[$f]??'');
+        $formData[$f] = trim($_POST[$f] ?? '');
     }
 
+    // Handle level selector
     if(!empty($_POST['level'])){
-        list($type,$value)=explode(':',$_POST['level']);
+        list($type,$value) = explode(':',$_POST['level']);
         $formData['grade']=$formData['strand']=$formData['course']='';
-        $formData[$type]=$value;
+        $formData[$type] = $value;
     }
 
-if(!empty($_FILES['photo']['tmp_name'])){
+    // Handle photo upload
+    if(!empty($_FILES['photo']['tmp_name'])){
+        $info = getimagesize($_FILES['photo']['tmp_name']);
+        if(!$info){
+            $msg = "Invalid image.";
+        } else {
+            $filename = $id.'_'.time().'.jpg';
+            $dest = $uploadDir.$filename;
 
-    $info=getimagesize($_FILES['photo']['tmp_name']);
+            // Resize and compress
+            $src = imagecreatefromstring(file_get_contents($_FILES['photo']['tmp_name']));
+            $dst = imagecreatetruecolor(300,400);
+            imagecopyresampled($dst,$src,0,0,0,0,300,400,imagesx($src),imagesy($src));
+            imagejpeg($dst,$dest,85);
+            imagedestroy($src);
+            imagedestroy($dst);
 
-    if(!$info){
-        $msg="Invalid image.";
-    }else{
+            $blob = file_get_contents($dest);
 
-        $ext='jpg';
-        $filename=$id.'_'.time().'.jpg';
-        $dest=$uploadDir.$filename;
+            // Duplicate photo check in PHP
+            $hash = sha1($blob);
+            $all = $pdo->query("SELECT id, photo_blob FROM register WHERE id != $id")->fetchAll(PDO::FETCH_ASSOC);
+            foreach($all as $row){
+                $existingBlob = $row['photo_blob'];
+                
+                // If it's a resource (LOB), read contents
+                if (is_resource($existingBlob)) {
+                    $existingBlob = stream_get_contents($existingBlob);
+                }
 
-        /* Resize + compress */
-        $src=imagecreatefromstring(file_get_contents($_FILES['photo']['tmp_name']));
-        $dst=imagecreatetruecolor(300,400);
-        imagecopyresampled($dst,$src,0,0,0,0,300,400,imagesx($src),imagesy($src));
-        imagejpeg($dst,$dest,85);
-
-        imagedestroy($src);
-        imagedestroy($dst);
-
-        $blob=file_get_contents($dest);
-
-        /* DUPLICATE CHECK */
-        $hash=sha1($blob);
-        $chk=$pdo->prepare("SELECT id FROM register WHERE sha1(photo_blob)=:h AND id!=:id");
-        $chk->execute([':h'=>$hash,':id'=>$id]);
-
-        if($chk->fetch()){
-            unlink($dest);
-            $msg="Duplicate photo detected.";
-        }else{
-
-            if(!empty($currentPhoto)){
-                $old=$uploadDir.$currentPhoto;
-                if(file_exists($old)) unlink($old);
+                if(sha1($existingBlob) === $hash){
+                    unlink($dest);
+                    $msg = "Duplicate photo detected.";
+                    break;
+                }
             }
 
-            $formData['photo']=$filename;
-            $formData['photo_blob']=$blob;
+
+            // Update if no duplicate
+            if($msg === ''){
+                if(!empty($currentPhoto)){
+                    $old = $uploadDir.$currentPhoto;
+                    if(file_exists($old)) unlink($old);
+                }
+                $formData['photo'] = $filename;
+                $formData['photo_blob'] = $blob;
+            }
         }
+    } else {
+        // Keep current photo if none uploaded
+        $formData['photo'] = $currentPhoto;
+        $formData['photo_blob'] = $currentBlob;
     }
 
-}else{
-    $formData['photo']=$currentPhoto;
-    $formData['photo_blob']=$currentBlob;
-}
-
-
-    /* UPDATE */
-    if($msg===''){
-
-        $stmt=$pdo->prepare("
-        UPDATE register SET
-            lrn=:lrn,
-            full_name=:full_name,
-            id_number=:id_number,
-            grade=:grade,
-            strand=:strand,
-            course=:course,
-            home_address=:home_address,
-            guardian_name=:guardian_name,
-            guardian_contact=:guardian_contact,
-            photo=:photo,
-            photo_blob=:photo_blob
-        WHERE id=:id
+    // UPDATE DB if no errors
+    if($msg === ''){
+        $stmt = $pdo->prepare("
+            UPDATE register SET
+                lrn=:lrn,
+                full_name=:full_name,
+                grade=:grade,
+                strand=:strand,
+                course=:course,
+                home_address=:home_address,
+                guardian_name=:guardian_name,
+                guardian_contact=:guardian_contact,
+                photo=:photo,
+                photo_blob=:photo_blob
+            WHERE id=:id
         ");
 
-        $stmt->execute([
-            ':lrn'=>$formData['lrn'],
-            ':full_name'=>$formData['full_name'],
-            ':id_number'=>$formData['id_number'],
-            ':grade'=>$formData['grade'],
-            ':strand'=>$formData['strand'],
-            ':course'=>$formData['course'],
-            ':home_address'=>$formData['home_address'],
-            ':guardian_name'=>$formData['guardian_name'],
-            ':guardian_contact'=>$formData['guardian_contact'],
-            ':photo'=>$formData['photo'],
-            ':photo_blob'=>$formData['photo_blob'],
-            ':id'=>$id
-        ]);
+        $stmt->bindParam(':lrn', $formData['lrn']);
+        $stmt->bindParam(':full_name', $formData['full_name']);
+        $stmt->bindParam(':grade', $formData['grade']);
+        $stmt->bindParam(':strand', $formData['strand']);
+        $stmt->bindParam(':course', $formData['course']);
+        $stmt->bindParam(':home_address', $formData['home_address']);
+        $stmt->bindParam(':guardian_name', $formData['guardian_name']);
+        $stmt->bindParam(':guardian_contact', $formData['guardian_contact']);
+        $stmt->bindParam(':photo', $formData['photo']);
+        $stmt->bindParam(':photo_blob', $formData['photo_blob'], PDO::PARAM_LOB);
+        $stmt->bindParam(':id', $id, PDO::PARAM_INT);
 
-        $msg="Record updated successfully!";
+        $stmt->execute();
+        $msg = "Record updated successfully!";
     }
 }
 
-$themeClass=(isset($_COOKIE['theme']) && $_COOKIE['theme']=='dark')?'dark':'';
+$themeClass = (isset($_COOKIE['theme']) && $_COOKIE['theme']=='dark') ? 'dark' : '';
 ?>
-
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -143,10 +144,15 @@ body { font-family:"Segoe UI", Arial, sans-serif; background:#c9dfff; display:fl
 .card::-webkit-scrollbar { width:6px; }
 .card::-webkit-scrollbar-thumb { background:#3549a3; border-radius:3px; }
 body.dark .card { background: #1e1e1e; color:#eaeaea; }
+.topbar a{ position: absolute; top: 10px; right: 20px; color:#fff; text-decoration:none; font-size:24px; border-radius: 20px; padding: 5px 12px 7px 12px; font-weight:bolder; background:rgba(0, 0, 0, 0.4); color: black; border:none; cursor:pointer; transition:0.3s; }
+.topbar a:hover { background:rgba(0, 0, 0, 0.6); color: white; transform:scale(1.1); transition:0.3s; }
+body.dark .topbar a:hover { background:rgba(255, 255, 255, 0.6); color: black;  }
+body.dark .topbar a { background:rgba(255, 255, 255, 0.4); color: white; }
+.topbar { background:rgb(255, 255, 255); color:black; padding:15px 20px; font-size:25px; font-weight:600; border-bottom:1px solid #ccc; transition:0.3s; }
 body.dark .topbar { background:#111; border-bottom:1px solid white; color:#fff; transition:0.3s; }
 label{ display:block; margin:12px 0 6px; font-weight:600; transition:0.3s; }
 input, select, button { padding:12px; width:100%; margin-bottom:15px; border:1px solid #ccc; border-radius:6px; font-size:15px; transition:0.3s; }
-input:focus, select:focus{ border-color:#3549a3; outline:none; box-shadow:0 0 6px rgba(53,73,163,0.2); }
+input:focus, select:focus{ border-color:#3549a3; outline:none!important ; box-shadow:0 0 6px rgba(53,73,163,0.2); }
 body.dark input, body.dark select { background:#2c2c2c; color:#eaeaea; border:1px solid #555; }
 button{ background:#3549a3; color:white; border:none; cursor:pointer; font-weight:600; transition:0.3s; border-radius:25px; }
 button:hover{ background:#2d3a80; }
@@ -155,12 +161,8 @@ button:hover{ background:#2d3a80; }
 .success{background:#2ecc71;color:#fff;}
 .error{background:#e74c3c;color:#fff;}
 </style>
-
-<script src="../theme.js"></script>
-
 </head>
 <body class="<?= $themeClass ?>">
-
 <div class="sidebar">
     <div>
         <h2>ID System</h2>
@@ -172,7 +174,7 @@ button:hover{ background:#2d3a80; }
     <div class="toggle-mode" onclick="toggleMode()">🌙 Dark Mode</div>
 </div>
 <div class="main">
-    <div class="topbar">Edit Record</div>
+    <div class="topbar"><a href="records.php">&times;</a>Edit Record</div>
     <div class="container">
         <div class="card">
             <?php if($msg!==''): ?>
@@ -182,10 +184,9 @@ button:hover{ background:#2d3a80; }
             <form action="update.php?id=<?= $id ?>" method="POST" enctype="multipart/form-data">
                 <label>LRN</label>
                 <input type="text" name="lrn" value="<?= htmlspecialchars($formData['lrn']) ?>" required>
+
                 <label>Full Name</label>
                 <input type="text" name="full_name" value="<?= htmlspecialchars($formData['full_name']) ?>" required>
-                <label>ID Number</label>
-                <input type="text" name="id_number" value="<?= htmlspecialchars($formData['id_number']) ?>" required>
 
                 <label>Grade / Strand / Course</label>
                 <select name="level">
@@ -200,7 +201,7 @@ button:hover{ background:#2d3a80; }
                         <?php endforeach; ?>
                     </optgroup>
                     <optgroup label="Courses">
-                        <?php foreach(['BSIT','BSBA','BSHM','BEED','BSED'] as $c): ?>
+                        <?php foreach(['BSBA','BSE','BEE','BSCS','BAE'] as $c): ?>
                         <option value="course:<?= $c ?>" <?= $formData['course']==$c?'selected':'' ?>><?= $c ?></option>
                         <?php endforeach; ?>
                     </optgroup>
@@ -208,8 +209,10 @@ button:hover{ background:#2d3a80; }
 
                 <label>Home Address</label>
                 <input type="text" name="home_address" value="<?= htmlspecialchars($formData['home_address']) ?>" required>
+
                 <label>Guardian's Name</label>
                 <input type="text" name="guardian_name" value="<?= htmlspecialchars($formData['guardian_name']) ?>" required>
+
                 <label>Guardian's Contact Number</label>
                 <input type="text" name="guardian_contact" value="<?= htmlspecialchars($formData['guardian_contact']) ?>" required>
 
@@ -225,8 +228,6 @@ button:hover{ background:#2d3a80; }
     </div>
 </div>
 
-</body>
-
 <script>
 function previewImage(input){
     if(input.files && input.files[0]){
@@ -239,5 +240,6 @@ function previewImage(input){
     }
 }
 </script>
-
+<script src="../theme.js"></script>
+</body>
 </html>

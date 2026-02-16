@@ -1,5 +1,5 @@
 <?php 
-//require_once __DIR__ . '/admin-auth.php';
+require_once __DIR__ . '/admin-auth.php';
 require_once __DIR__ . '/../Config/database.php';
 
 
@@ -109,7 +109,7 @@ overflow-x:auto;
 </style>
 </head>
 
-<body class="<?= $themeClass ?>">
+<body class="<?php echo $themeClass; ?>">
 
 <!-- SIDEBAR -->
 <div class="sidebar">
@@ -118,7 +118,8 @@ overflow-x:auto;
         <a href="index.php" class="active">🏠 Dashboard</a>
         <a href="records.php">📑 Records</a>
         <a href="archive.php">📁 Archive</a>
-        <a href="logout.php">📤 Logout</a>
+        <a href="logout.php" onclick="return confirm('Are you sure you want to logout?')">📤 Logout</a>
+
     </div>
     <div class="toggle-mode" onclick="toggleMode()">🌙 Dark Mode</div>
 </div>

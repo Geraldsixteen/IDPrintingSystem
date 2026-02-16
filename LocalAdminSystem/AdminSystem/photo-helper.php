@@ -31,7 +31,7 @@ function displayPhoto($filename = null, $photo_blob = null){
                 file_put_contents($filePath, $photo_blob);
             }
 
-            return "<img src='{$webPath}{$safeFilename}' style='width:70px;height:90px;object-fit:cover;border:2px solid #000'>";
+            return "<img src='{$webPath}{$safeFilename}'>";
         }
     }
 
@@ -41,7 +41,7 @@ function displayPhoto($filename = null, $photo_blob = null){
 
     if ($filePath && file_exists($filePath)) {
 
-        return "<img src='{$webPath}{$safeFilename}' style='width:70px;height:90px;object-fit:cover;border:2px solid #000'>";
+        return "<img src='{$webPath}{$safeFilename}'>";
     }
 
     /* ===============================
@@ -60,5 +60,5 @@ function displayPhoto($filename = null, $photo_blob = null){
         imagedestroy($img);
     }
 
-    return "<img src='{$webPath}{$default}' style='width:70px;height:90px;object-fit:cover;border:2px solid #000'>";
+    return "<img src='{$webPath}{$default}'>";
 }

@@ -1,5 +1,5 @@
 <?php
-//require_once __DIR__ . '/admin-auth.php';
+require_once __DIR__ . '/admin-auth.php';
 require_once __DIR__ . '/../Config/database.php';
 require_once __DIR__ . '/photo-helper.php';
 
@@ -99,7 +99,7 @@ function getLevelDisplay($row) {
 // Filter options
 $juniorGrades = ['Grade 7','Grade 8','Grade 9','Grade 10'];
 $seniorStrands = ['HUMMS','ABM','STEM','GAS','ICT'];
-$courses = ['BSIT','BSBA','BSHM','BEED','BSED'];
+$courses = ['BSBA','BSE','BEE','BSCS','BAE'];
 ?>
 
 
@@ -158,7 +158,7 @@ img { width:70px; height:90px; object-fit:cover; border-radius:6px; border:2px s
         <a href="index.php">🏠 Dashboard</a>
         <a href="records.php" class="active">📑 Records</a>
         <a href="archive.php">📁 Archive</a>
-        <a href="logout.php">📤 Logout</a>
+        <a href="logout.php" onclick="return confirm('Are you sure you want to logout?')">📤 Logout</a>
     </div>
     <div class="toggle-mode" onclick="toggleMode()">🌙 Dark Mode</div>
 </div>

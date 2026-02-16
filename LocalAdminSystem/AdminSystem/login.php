@@ -1,5 +1,5 @@
 <?php
-//require_once __DIR__ . '/admin-auth.php';
+session_start();
 require_once __DIR__ . '/../Config/database.php';
 
 $err = "";

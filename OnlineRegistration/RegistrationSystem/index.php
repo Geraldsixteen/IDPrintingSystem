@@ -2,6 +2,19 @@
 session_start();
 require_once __DIR__ . '/../Config/database.php';
 
+function generate_uuid() {
+    // Generates a random UUID v4
+    return sprintf(
+        '%04x%04x-%04x-%04x-%04x-%04x%04x%04x',
+        mt_rand(0, 0xffff), mt_rand(0, 0xffff),
+        mt_rand(0, 0xffff),
+        mt_rand(0, 0x0fff) | 0x4000,
+        mt_rand(0, 0x3fff) | 0x8000,
+        mt_rand(0, 0xffff), mt_rand(0, 0xffff), mt_rand(0, 0xffff)
+    );
+}
+
+
 // Ensure large uploads work
 ini_set('upload_max_filesize', '10M');
 ini_set('post_max_size', '12M');
@@ -51,9 +64,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // ===== AUTO-GENERATE ID NUMBER =====
         $currentYear = date('y'); // e.g., '26'
         $prefix = 'S' . $currentYear . '-';
-        $stmtId = $pdo->prepare("SELECT id_number FROM register WHERE id_number LIKE :prefix ORDER BY id_number DESC LIMIT 1");
+        $stmtId = $pdo->prepare("
+            SELECT id_number FROM (
+                SELECT id_number FROM register WHERE id_number LIKE :prefix
+                UNION ALL
+                SELECT id_number FROM archive  WHERE id_number LIKE :prefix
+            ) AS all_ids
+            ORDER BY id_number DESC
+            LIMIT 1
+        ");
         $stmtId->execute([':prefix' => $prefix . '%']);
         $lastId = $stmtId->fetchColumn();
+
         if ($lastId) {
             $num = intval(substr($lastId, 4)) + 1;
         } else {
@@ -63,7 +85,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // ====================================
 
         // Check if LRN exists
-        $check = $pdo->prepare("SELECT COUNT(*) FROM register WHERE lrn=:lrn OR id_number=:id_number");
+        $check = $pdo->prepare("
+            SELECT COUNT(*) FROM (
+                SELECT lrn,id_number FROM register WHERE lrn=:lrn OR id_number=:id_number
+                UNION ALL
+                SELECT lrn,id_number FROM archive  WHERE lrn=:lrn OR id_number=:id_number
+            ) AS check_all
+        ");
+
         $check->execute([':lrn'=>$lrn, ':id_number'=>$id_number]);
         if ($check->fetchColumn() > 0) send_json(['success'=>false,'msg'=>'This LRN is already registered.']);
 
@@ -124,7 +153,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 body{margin:0;font-family:"Segoe UI",Arial,sans-serif;background:#f0f4ff;display:flex;justify-content:center;padding:20px;}
 .main{width:100%;max-width:600px;}
-.topbar{background:white;text-align:center;margin-bottom:20px;}
+.topbar{width: 100%;background:white;text-align:center;margin-bottom:20px;}
 .topbar img{width:80px;display:block;margin:0 auto 10px;}
 .topbar h3{margin:0;color:#002b80;}
 .card{background:#fff;padding:25px;border-radius:15px;box-shadow:0 6px 20px rgba(0,0,0,0.1);}
@@ -233,11 +262,11 @@ body{margin:0;font-family:"Segoe UI",Arial,sans-serif;background:#f0f4ff;display
 <div class="form-group">
 <select name="strand" required>
 <option value="" hidden></option>
-<option value="BSIT">BSIT</option>
 <option value="BSBA">BSBA</option>
-<option value="BSHM">BSHM</option>
-<option value="BEED">BEED</option>
-<option value="BSED">BSED</option>
+<option value="BSE">BSE</option>
+<option value="BEE">BEE</option>
+<option value="BSCS">BSCS</option>
+<option value="BAE">BAE</option>
 </select>
 <label>Course</label>
 </div>
@@ -301,28 +330,40 @@ document.querySelectorAll('.reg-form-inner').forEach(form => {
 
 
     form.addEventListener('submit', async e => {
-        e.preventDefault();
-        if(!resizedPhotoBase64){alert('Please select a photo'); return;}
-        const fd = new FormData();
-        fd.append('level', form.dataset.level);
-        for(let input of form.elements){
-            if(input.name && input.type!=='file') fd.append(input.name,input.value);
-        }
-        fd.append('photo_base64',resizedPhotoBase64);
-        try{
-            const res = await fetch('index.php',{method:'POST',body:fd});
-            const data = await res.json();
-            if(data.success){
-                const p=document.getElementById('popupMsg');
-                p.innerHTML='✔ '+data.msg+'<br>ID Number: '+data.id_number;
-                p.style.display='block';
-                setTimeout(()=>p.style.display='none',2500);
-                preview.src=data.photo_base64;
-                form.querySelectorAll('input:not([type=file]), select').forEach(i=>i.value='');
-                resizedPhotoBase64='';
-            } else alert(data.msg);
-        } catch(err){alert('Submit failed: '+err.message);}
-    });
+    e.preventDefault();
+    if(!resizedPhotoBase64){alert('Please select a photo'); return;}
+    const fd = new FormData();
+    fd.append('level', form.dataset.level);
+    for(let input of form.elements){
+        if(input.name && input.type!=='file') fd.append(input.name,input.value);
+    }
+    fd.append('photo_base64',resizedPhotoBase64);
+    try{
+        const res = await fetch('index.php',{method:'POST',body:fd});
+        const data = await res.json();
+        if(data.success){
+            const p=document.getElementById('popupMsg');
+            p.innerHTML='✔ '+data.msg+'<br>ID Number: '+data.id_number;
+            p.style.display='block';
+            setTimeout(()=>p.style.display='none',2500);
+
+            // Show the uploaded photo in preview (optional)
+            preview.src = data.photo_base64;
+            preview.style.display = 'block';
+
+            // Reset form fields
+            form.querySelectorAll('input:not([type=file]), select').forEach(i=>i.value='');
+            resizedPhotoBase64 = '';
+
+            // Reset file input
+            photoInput.value = '';
+            // Hide preview again
+            preview.src = '';
+            preview.style.display = 'none';
+
+        } else alert(data.msg);
+    } catch(err){alert('Submit failed: '+err.message);}
+});
 });
 </script>
 </body>
