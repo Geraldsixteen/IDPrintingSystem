@@ -1,13 +1,13 @@
-<?php 
+<?php
+// Use environment variables if available, fallback to Render database
+$host = getenv('DB_HOST') ?: 'dpg-d5vnr7e3jp1c73cc3bag-a.oregon-postgres.render.com';
+$port = getenv('DB_PORT') ?: '5432';
+$db   = getenv('DB_NAME') ?: 'id_printing_db';
+$user = getenv('DB_USER') ?: 'auto';
+$pass = getenv('DB_PASS') ?: '5NpiRI7p6ZF6xTUN2U4blfnoN5BDIzRJ';
 
-// Read environment variables correctly
-$host = 'localhost';
-$port = '5432';
-$db   = 'id_printing_db';
-$user = 'postgres';
-$pass = 'neverforget';
 // DSN string for PostgreSQL
-$dsn = "pgsql:host=$host;port=$port;dbname=$db";
+$dsn = "pgsql:host=$host;port=$port;dbname=$db;sslmode=require";
 
 $options = [
     PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
