@@ -44,6 +44,8 @@ $result = $stmt->fetchAll(PDO::FETCH_ASSOC);
 // ================= THEME =================
 $themeClass = (isset($_COOKIE['theme']) && $_COOKIE['theme']=='dark') ? 'dark' : '';
 
+$updated = isset($_GET['updated']);
+
 // Build filter links
 function buildLink($params, $typeValue='', $type='') {
     if ($type && $typeValue !== '') {
@@ -102,7 +104,22 @@ img { width:70px; height:90px; object-fit:cover; border-radius:6px; border:2px s
 .dropdown:hover .dropdown-content { display: block; }
 @media (max-width:768px) { body { flex-direction:column; } .sidebar { width:100%; flex-direction:row; overflow-x:auto; } .sidebar a { margin:3px 10px; } .card { width:95%; } table { min-width:auto; font-size:12px; } .toggle-mode{height:60px;line-height:40px;margin:10px; white-space: nowrap;} }
 img { width:70px; height:90px; object-fit:cover; border-radius:6px; border:2px solid #ddd; }
-/* ... rest of your CSS ... */
+.success-msg{
+    background:#2ecc71;
+    color:white;
+    padding:12px;
+    border-radius:8px;
+    margin-bottom:15px;
+    text-align:center;
+    font-weight:600;
+    animation:fadeout 3s forwards;
+}
+
+@keyframes fadeout{
+    0%{opacity:1;}
+    70%{opacity:1;}
+    100%{opacity:0;}
+}
 </style>
 </head>
 <body class="<?= $themeClass ?>">
@@ -122,6 +139,11 @@ img { width:70px; height:90px; object-fit:cover; border-radius:6px; border:2px s
     <div class="topbar"><span>Manage Records</span></div>
     <div class="container">
         <div class="card">
+            <?php if($updated): ?>
+                <div class="success-msg">
+                    ✅ Record successfully updated!
+                </div>
+                <?php endif; ?>
             <!-- Filters -->
             <div class="filters">
                 <!-- Junior High -->

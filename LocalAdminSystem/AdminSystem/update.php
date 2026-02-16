@@ -12,6 +12,7 @@ $id = intval($_GET['id']);
 $stmt = $pdo->prepare("SELECT * FROM register WHERE id=:id");
 $stmt->execute([':id'=>$id]);
 $formData = $stmt->fetch(PDO::FETCH_ASSOC);
+$stmtOld = $formData; // store original data for comparison
 if(!$formData) die("Record not found.");
 
 /* Upload folder */
@@ -79,39 +80,66 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
     }
 
     // UPDATE DB if no errors
-    if($msg === ''){
-        $stmt = $pdo->prepare("
-            UPDATE register SET
-                lrn=:lrn,
-                full_name=:full_name,
-                grade=:grade,
-                strand=:strand,
-                course=:course,
-                home_address=:home_address,
-                guardian_name=:guardian_name,
-                guardian_contact=:guardian_contact,
-                photo=:photo,
-                photo_blob=:photo_blob
-            WHERE id=:id
-        ");
+    // ================= CHECK IF ANYTHING CHANGED =================
 
-        $stmt->bindParam(':lrn', $formData['lrn']);
-        $stmt->bindParam(':full_name', $formData['full_name']);
-        $stmt->bindParam(':grade', $formData['grade']);
-        $stmt->bindParam(':strand', $formData['strand']);
-        $stmt->bindParam(':course', $formData['course']);
-        $stmt->bindParam(':home_address', $formData['home_address']);
-        $stmt->bindParam(':guardian_name', $formData['guardian_name']);
-        $stmt->bindParam(':guardian_contact', $formData['guardian_contact']);
-        $stmt->bindParam(':photo', $formData['photo']);
-        $stmt->bindParam(':photo_blob', $formData['photo_blob'], PDO::PARAM_LOB);
-        $stmt->bindParam(':id', $id, PDO::PARAM_INT);
-        $stmt->execute();
+$changed = false;
 
-        // Redirect to records.php after successful update
-        header("Location: records.php");
-        exit;
+// compare fields
+$compareFields = ['lrn','full_name','grade','strand','course','home_address','guardian_name','guardian_contact'];
+
+foreach($compareFields as $f){
+    if(($formData[$f] ?? '') != ($stmtOld[$f] ?? '')){
+        $changed = true;
+        break;
     }
+}
+
+// photo changed?
+if(!empty($_FILES['photo']['tmp_name'])) $changed = true;
+
+// NOTHING NEW
+if(!$changed){
+    echo "<script>
+        alert('⚠ Nothing new to update.');
+        window.location='update.php?id=$id';
+    </script>";
+    exit;
+}
+
+// ================= UPDATE =================
+
+$stmt = $pdo->prepare("
+    UPDATE register SET
+        lrn=:lrn,
+        full_name=:full_name,
+        grade=:grade,
+        strand=:strand,
+        course=:course,
+        home_address=:home_address,
+        guardian_name=:guardian_name,
+        guardian_contact=:guardian_contact,
+        photo=:photo,
+        photo_blob=:photo_blob
+    WHERE id=:id
+");
+
+$stmt->execute([
+    ':lrn'=>$formData['lrn'],
+    ':full_name'=>$formData['full_name'],
+    ':grade'=>$formData['grade'],
+    ':strand'=>$formData['strand'],
+    ':course'=>$formData['course'],
+    ':home_address'=>$formData['home_address'],
+    ':guardian_name'=>$formData['guardian_name'],
+    ':guardian_contact'=>$formData['guardian_contact'],
+    ':photo'=>$formData['photo'],
+    ':photo_blob'=>$formData['photo_blob'],
+    ':id'=>$id
+]);
+
+header("Location: records.php?updated=1");
+exit;
+
 }
 
 $themeClass = (isset($_COOKIE['theme']) && $_COOKIE['theme']=='dark') ? 'dark' : '';

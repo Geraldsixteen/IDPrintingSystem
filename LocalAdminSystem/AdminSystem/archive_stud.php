@@ -31,12 +31,15 @@ try {
     }
 
     // Not archived yet: insert into archive
-    $insert = $pdo->prepare("
-        INSERT INTO archive
-        (lrn, full_name, id_number, grade, strand, course, home_address,
-         guardian_name, guardian_contact, photo, photo_blob, created_at, printed_at, status)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?, ?, NOW(), 'Not Released')
-    ");
+$insert = $pdo->prepare("
+    INSERT INTO archive
+    (
+        lrn, full_name, id_number, grade, strand, course, home_address,
+        guardian_name, guardian_contact, photo, photo_blob,
+        created_at, printed_at, status, released_at
+    )
+    VALUES (?,?,?,?,?,?,?,?,?,?,?, ?, NOW(), 'Pending', NULL)
+");
 
     $insert->execute([
         $row['lrn'],

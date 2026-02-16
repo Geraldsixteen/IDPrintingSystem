@@ -1,4 +1,6 @@
 <?php
+date_default_timezone_set('Asia/Manila');
+
 // Use environment variables if available, fallback to Render database
 $host = getenv('DB_HOST');
 $port = getenv('DB_PORT');
@@ -18,6 +20,7 @@ $options = [
 try {
     $pdo = new PDO($dsn, $user, $pass, $options);
     // echo "Connected to PostgreSQL successfully!";
+    $pdo->exec("SET TIME ZONE 'Asia/Manila'");
 } catch (PDOException $e) {
     die("PostgreSQL connection failed: " . $e->getMessage());
 }

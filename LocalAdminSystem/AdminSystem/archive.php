@@ -8,24 +8,26 @@ if(isset($_POST['toggle_status'])){
 
     $id = intval($_POST['toggle_status']);
 
-$stmt = $pdo->prepare("
-    UPDATE archive SET
-        status = CASE 
-            WHEN status = 'Released' THEN 'Pending'
-            ELSE 'Released'
-        END,
-        released_at = CASE
-            WHEN status = 'Released' THEN NULL
-            ELSE NOW()
-        END
-    WHERE id = ?
-");
+    $stmt = $pdo->prepare("
+        UPDATE archive
+        SET
+            status = CASE
+                WHEN status = 'Released' THEN 'Pending'
+                ELSE 'Released'
+            END,
+            released_at = CASE
+                WHEN status = 'Pending' THEN NOW()
+                ELSE NULL
+            END
+        WHERE id = ?
+    ");
 
     $stmt->execute([$id]);
 
     header("Location: archive.php");
     exit;
 }
+
 /* ================= RESTORE SINGLE ================= */
 
 if(isset($_POST['restore_id'])){
@@ -209,7 +211,7 @@ img{width:70px;height:90px;object-fit:cover;border-radius:6px;border:2px solid #
 .batch-btn:hover{background:#d35400;}
 .status-badge{padding:5px 10px;border-radius:20px;color:white;font-weight:600;font-size:12px;}
 .status-released{background:#28a745;}
-.status-pending{background:#dc3545;display:inline-block;}
+.status-pending{background:#dc3545;}
 .checkbox-col{width:30px;}
 </style>
 </head>
