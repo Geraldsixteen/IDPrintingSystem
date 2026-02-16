@@ -4,58 +4,39 @@ require_once __DIR__ . '/../Config/database.php';
 
 $err = "";
 
-// 🔹 Auto-login using Remember Me cookies
-if (!empty($_COOKIE['remember_username']) && !empty($_COOKIE['remember_token'])) {
-    $username = $_COOKIE['remember_username'];
-    $token = $_COOKIE['remember_token'];
-
-    $stmt = $pdo->prepare("SELECT id FROM admins WHERE username = :username AND remember_token = :token");
-    $stmt->execute(['username' => $username, 'token' => $token]);
-    if ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-        $_SESSION['admin_id'] = $row['id'];
-        $_SESSION['admin_username'] = $username;
-        header('Location: index.php');
-        exit;
-    }
-}
-
-// 🔹 Handle login form
+// Handle POST login
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $username = trim($_POST['username'] ?? '');
     $password = $_POST['password'] ?? '';
     $remember = isset($_POST['remember']);
 
-    if (empty($username) || empty($password)) {
+    if (!$username || !$password) {
         $err = "Please fill in both fields.";
     } else {
         $stmt = $pdo->prepare("SELECT id, password FROM admins WHERE username = :username");
         $stmt->execute(['username' => $username]);
         if ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-            $id = $row['id'];
-            $hashedPassword = $row['password'];
-            if (password_verify($password, $hashedPassword)) {
+            if (password_verify($password, $row['password'])) {
                 session_regenerate_id(true);
-                $_SESSION['admin_id'] = $id;
+                $_SESSION['admin_id'] = $row['id'];
                 $_SESSION['admin_username'] = $username;
 
-                // 🔹 Remember Me
                 if ($remember) {
                     $token = bin2hex(random_bytes(32));
-                    setcookie('remember_username', $username, time() + (86400 * 30), "/");
-                    setcookie('remember_token', $token, time() + (86400 * 30), "/");
+                    setcookie('remember_username', $username, time() + 86400*30, "/");
+                    setcookie('remember_token', $token, time() + 86400*30, "/");
 
                     $stmtUpdate = $pdo->prepare("UPDATE admins SET remember_token = :token WHERE id = :id");
-                    $stmtUpdate->execute(['token' => $token, 'id' => $id]);
+                    $stmtUpdate->execute(['token' => $token, 'id' => $row['id']]);
                 } else {
-                    // Clear cookies and remove token
+                    // Clear previous cookies & token
                     setcookie('remember_username', '', time() - 3600, "/");
                     setcookie('remember_token', '', time() - 3600, "/");
-
                     $stmtUpdate = $pdo->prepare("UPDATE admins SET remember_token = NULL WHERE id = :id");
-                    $stmtUpdate->execute(['id' => $id]);
+                    $stmtUpdate->execute(['id' => $row['id']]);
                 }
 
-                header('Location: index.php');
+                header("Location: index.php");
                 exit;
             } else {
                 $err = "Invalid username or password.";
@@ -66,6 +47,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 ?>
+
 
 <!DOCTYPE html>
 <html lang="en">
@@ -95,38 +77,10 @@ form ul {
     width: 350px;
     text-align: center;
 }
-form ul img {
-    display: block;
-    margin: 0 auto 1em auto;
-    width: 80px;
-    height: 100px;
-}
-form ul h3 {
-    text-align: center;
-    color: #001d43;
-    margin-bottom: 20px;
-}
-#username, #password {
-    padding: 10px;
-    width: 80%;
-    font-size: 16px;
-    border: 1px solid #b4b4b4;
-    border-radius: 3px;
-    margin-top: 10px;
-    outline: none;
-}
-#Login {
-    background: #001d43;
-    width: 100%;
-    padding: 10px;
-    font-size: 18px;
-    border: none;
-    border-radius: 3px;
-    font-weight: bold;
-    color: #fff;
-    transition: .2s ease;
-    cursor: pointer;
-}
+form ul img { display: block; margin: 0 auto 1em auto; width: 80px; height: 100px; }
+form ul h3 { text-align: center; color: #001d43; margin-bottom: 20px; }
+#username, #password { padding: 10px; width: 80%; font-size: 16px; border: 1px solid #b4b4b4; border-radius: 3px; margin-top: 10px; outline: none; }
+#Login { background: #001d43; width: 100%; padding: 10px; font-size: 18px; border: none; border-radius: 3px; font-weight: bold; color: #fff; cursor: pointer; transition: .2s ease; }
 #Login:hover { background: rgba(0, 29, 67, 0.8); }
 .error { color: red; margin-bottom: 10px; }
 .success { color: green; margin-bottom: 10px; }

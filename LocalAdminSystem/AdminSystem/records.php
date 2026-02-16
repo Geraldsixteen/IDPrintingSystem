@@ -1,4 +1,4 @@
-<?php
+<?php  
 require_once __DIR__ . '/admin-auth.php';
 require_once __DIR__ . '/../Config/database.php';
 require_once __DIR__ . '/photo-helper.php';
@@ -9,29 +9,27 @@ $grade  = isset($_GET['grade']) ? $_GET['grade'] : '';
 $strand = isset($_GET['strand']) ? $_GET['strand'] : '';
 $course = isset($_GET['course']) ? $_GET['course'] : '';
 
+// ================= FILTER OPTIONS =================
+$juniorGrades = ['Grade 7','Grade 8','Grade 9','Grade 10'];
+$seniorStrands = ['HUMMS','ABM','STEM','GAS','ICT'];
+$courses = ['BSBA','BSE','BEE','BSCS','BAE'];
+
 // ================= BUILD SQL =================
 $sql = "SELECT * FROM register WHERE 1=1";
 $params = [];
 
-// Search filter (using LIKE for MySQL, not ILIKE)
 if (!empty($search)) {
     $sql .= " AND (lrn LIKE :search OR full_name LIKE :search OR id_number LIKE :search)";
     $params[':search'] = "%$search%";
 }
-
-// Grade filter
 if (!empty($grade)) {
     $sql .= " AND grade = :grade";
     $params[':grade'] = $grade;
 }
-
-// Strand filter
 if (!empty($strand)) {
     $sql .= " AND strand = :strand";
     $params[':strand'] = $strand;
 }
-
-// Course filter
 if (!empty($course)) {
     $sql .= " AND course = :course";
     $params[':course'] = $course;
@@ -43,39 +41,8 @@ $stmt = $pdo->prepare($sql);
 $stmt->execute($params);
 $result = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-// ================= AJAX REQUEST =================
-if(isset($_GET['ajax'])){
-    foreach($result as $row): ?>
-        <tr>
-            <td><?= htmlspecialchars($row['lrn']) ?></td>
-            <td><?= htmlspecialchars($row['full_name']) ?></td>
-            <td><?= htmlspecialchars($row['id_number']) ?></td>
-            <td><?= htmlspecialchars(getLevelDisplay($row)) ?></td>
-            <td><?= htmlspecialchars($row['home_address']) ?></td>
-            <td><?= htmlspecialchars($row['guardian_name']) ?></td>
-            <td><?= htmlspecialchars($row['guardian_contact']) ?></td>
-            <td><?= displayPhoto($row['photo'] ?? null, $row['photo_blob'] ?? null) ?></td>
-            <td><?= $row['created_at'] ? date('Y-m-d H:i:s', strtotime($row['created_at'])) : '-' ?></td>
-            <td><?= $row['restored_at'] ? date('Y-m-d H:i:s', strtotime($row['restored_at'])) : '-' ?></td>
-            <td class="actions">
-                <a href="update.php?id=<?= $row['id'] ?>"><button class="edit-btn">Edit</button></a>
-                <a href="print.php?id=<?= $row['id'] ?>"><button class="edit-btn" style="background:#3498db;">🖨️ Print</button></a>
-            </td>
-        </tr>
-    <?php endforeach;
-    exit;
-}
-
 // ================= THEME =================
 $themeClass = (isset($_COOKIE['theme']) && $_COOKIE['theme']=='dark') ? 'dark' : '';
-
-// Current filters
-$currentParams = [
-    'search' => $search,
-    'grade'  => $grade,
-    'strand' => $strand,
-    'course' => $course
-];
 
 // Build filter links
 function buildLink($params, $typeValue='', $type='') {
@@ -87,21 +54,7 @@ function buildLink($params, $typeValue='', $type='') {
     }
     return '?' . http_build_query($params);
 }
-
-// Display grade/strand/course properly
-function getLevelDisplay($row) {
-    if (!empty($row['grade'])) return $row['grade'];
-    if (!empty($row['strand'])) return $row['strand'];
-    if (!empty($row['course'])) return $row['course'];
-    return '';
-}
-
-// Filter options
-$juniorGrades = ['Grade 7','Grade 8','Grade 9','Grade 10'];
-$seniorStrands = ['HUMMS','ABM','STEM','GAS','ICT'];
-$courses = ['BSBA','BSE','BEE','BSCS','BAE'];
 ?>
-
 
 <!DOCTYPE html>
 <html lang="en">
@@ -148,6 +101,8 @@ img { width:70px; height:90px; object-fit:cover; border-radius:6px; border:2px s
 .dropdown-content a:hover, .dropdown-content a.active { background-color: #002b80; color: white; }
 .dropdown:hover .dropdown-content { display: block; }
 @media (max-width:768px) { body { flex-direction:column; } .sidebar { width:100%; flex-direction:row; overflow-x:auto; } .sidebar a { margin:3px 10px; } .card { width:95%; } table { min-width:auto; font-size:12px; } .toggle-mode{height:60px;line-height:40px;margin:10px; white-space: nowrap;} }
+img { width:70px; height:90px; object-fit:cover; border-radius:6px; border:2px solid #ddd; }
+/* ... rest of your CSS ... */
 </style>
 </head>
 <body class="<?= $themeClass ?>">
@@ -167,41 +122,41 @@ img { width:70px; height:90px; object-fit:cover; border-radius:6px; border:2px s
     <div class="topbar"><span>Manage Records</span></div>
     <div class="container">
         <div class="card">
-            <!-- Filters and Search -->
+            <!-- Filters -->
             <div class="filters">
                 <!-- Junior High -->
                 <div class="dropdown">
-                    <button class="dropbtn <?= in_array($grade,$juniorGrades)?'active':'' ?>">Junior High</button>
+                    <button class="dropbtn <?= in_array($grade,$juniorGrades)?'active':'' ?>" data-type="grade">Junior High</button>
                     <div class="dropdown-content">
                         <?php foreach($juniorGrades as $g): ?>
-                            <a href="<?= buildLink($currentParams,$g,'grade') ?>" class="<?= $grade == $g ? 'active' : '' ?>"><?= $g ?></a>
+                            <a href="<?= buildLink($_GET, $g, 'grade') ?>" class="<?= $grade == $g ? 'active' : '' ?>"><?= $g ?></a>
                         <?php endforeach; ?>
                     </div>
                 </div>
                 <!-- Senior High -->
                 <div class="dropdown">
-                    <button class="dropbtn <?= in_array($strand,$seniorStrands)?'active':'' ?>">Senior High</button>
+                    <button class="dropbtn <?= in_array($strand,$seniorStrands)?'active':'' ?>" data-type="strand">Senior High</button>
                     <div class="dropdown-content">
                         <?php foreach($seniorStrands as $s): ?>
-                            <a href="<?= buildLink($currentParams,$s,'strand') ?>" class="<?= $strand == $s ? 'active' : '' ?>"><?= $s ?></a>
+                            <a href="<?= buildLink($_GET, $s, 'strand') ?>" class="<?= $strand == $s ? 'active' : '' ?>"><?= $s ?></a>
                         <?php endforeach; ?>
                     </div>
                 </div>
                 <!-- College -->
                 <div class="dropdown">
-                    <button class="dropbtn <?= in_array($course,$courses)?'active':'' ?>">College</button>
+                    <button class="dropbtn <?= in_array($course,$courses)?'active':'' ?>" data-type="course">College</button>
                     <div class="dropdown-content">
                         <?php foreach($courses as $c): ?>
-                            <a href="<?= buildLink($currentParams,$c,'course') ?>" class="<?= $course == $c ? 'active' : '' ?>"><?= $c ?></a>
+                            <a href="<?= buildLink($_GET, $c, 'course') ?>" class="<?= $course == $c ? 'active' : '' ?>"><?= $c ?></a>
                         <?php endforeach; ?>
                     </div>
                 </div>
-                <!-- Reset -->
                 <div class="dropdown">
                     <a href="records.php"><button class="dropbtn">Reset Filters</button></a>
                 </div>
             </div>
 
+            <!-- Search -->
             <form method="GET" class="search-box">
                 <input type="text" name="search" placeholder="Search LRN, Name, ID..." value="<?= htmlspecialchars($search) ?>">
                 <button type="submit">Search</button>
@@ -225,17 +180,25 @@ img { width:70px; height:90px; object-fit:cover; border-radius:6px; border:2px s
                     </tr>
                 </thead>
                 <tbody>
-                <?php if($result): ?>
-                    <?php foreach($result as $row): ?>
+                    <?php if($result): ?>
+                        <?php foreach($result as $row): ?>
                         <tr>
                             <td><?= htmlspecialchars($row['lrn']) ?></td>
                             <td><?= htmlspecialchars($row['full_name']) ?></td>
                             <td><?= htmlspecialchars($row['id_number']) ?></td>
-                            <td><?= htmlspecialchars(getLevelDisplay($row)) ?></td>
+                            <td><?= htmlspecialchars(!empty($row['grade'])?$row['grade']:(!empty($row['strand'])?$row['strand']:$row['course'])) ?></td>
                             <td><?= htmlspecialchars($row['home_address']) ?></td>
                             <td><?= htmlspecialchars($row['guardian_name']) ?></td>
                             <td><?= htmlspecialchars($row['guardian_contact']) ?></td>
-                            <td><?= displayPhoto($row['photo'] ?? null, $row['photo_blob'] ?? null) ?></td>
+                            <td>
+                                <img 
+                                    src="<?= displayPhoto($row['photo'] ?? null, $row['photo_blob'] ?? null) ?>" 
+                                    alt="Photo"
+                                    loading="lazy"
+                                    title="<?= htmlspecialchars($row['photo'] ?? 'Default') ?>"
+                                >
+                            </td>
+
                             <td><?= $row['created_at'] ? date('Y-m-d H:i:s', strtotime($row['created_at'])) : '-' ?></td>
                             <td><?= $row['restored_at'] ? date('Y-m-d H:i:s', strtotime($row['restored_at'])) : '-' ?></td>
                             <td class="actions">
@@ -243,10 +206,10 @@ img { width:70px; height:90px; object-fit:cover; border-radius:6px; border:2px s
                                 <a href="print.php?id=<?= $row['id'] ?>"><button class="edit-btn" style="background:#3498db;">🖨️ Print</button></a>
                             </td>
                         </tr>
-                    <?php endforeach; ?>
-                <?php else: ?>
-                    <tr><td colspan="11" class="no-record">No records found.</td></tr>
-                <?php endif; ?>
+                        <?php endforeach; ?>
+                    <?php else: ?>
+                        <tr><td colspan="11" class="no-record">No records found.</td></tr>
+                    <?php endif; ?>
                 </tbody>
             </table>
         </div>
@@ -254,37 +217,5 @@ img { width:70px; height:90px; object-fit:cover; border-radius:6px; border:2px s
 </div>
 
 <script src="../theme.js"></script>
-
-<script>
-function fetchRecords() {
-    const params = new URLSearchParams({
-        ajax: 1,
-        search: '<?= htmlspecialchars($search) ?>',
-        grade: '<?= htmlspecialchars($grade) ?>',
-        strand: '<?= htmlspecialchars($strand) ?>',
-        course: '<?= htmlspecialchars($course) ?>'
-    });
-
-    fetch('records.php?' + params.toString())
-    .then(res => res.text())
-    .then(html => {
-        // Parse the returned HTML
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(html, 'text/html');
-        const newTbody = doc.querySelector('tbody');
-        if(newTbody){
-            const tbody = document.querySelector('tbody');
-            tbody.innerHTML = newTbody.innerHTML;
-        }
-    })
-    .catch(err => console.error(err));
-}
-
-// Optional: auto-refresh every 3 seconds
-setInterval(fetchRecords, 3000);
-</script>
-
-
-
 </body>
 </html>

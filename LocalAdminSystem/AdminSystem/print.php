@@ -12,12 +12,16 @@ $stmt->execute([$id]);
 $student = $stmt->fetch(PDO::FETCH_ASSOC);
 if (!$student) die("Student not found.");
 
+// Function to get student level/strand/course
 function studentLevel($row) {
     if (!empty($row['grade'])) return htmlspecialchars($row['grade']);
     if (!empty($row['strand'])) return htmlspecialchars($row['strand']);
     if (!empty($row['course'])) return htmlspecialchars($row['course']);
     return "";
 }
+
+// Photo URL using displayPhoto() — this automatically restores missing file
+$photoUrl = displayPhoto($student['photo'] ?? null, $student['photo_blob'] ?? null);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -100,7 +104,14 @@ html, body {
 <div class="card">
     <img class="id-bg" src="IDFront.png">
     <div class="vertical-layout">
-        <div class="photo"><?= displayPhoto($student['photo'] ?? null, $student['photo_blob'] ?? null) ?></div>
+        <div class="photo">
+            <img 
+            src="<?= htmlspecialchars($photoUrl) ?>" 
+            alt="Photo"
+            loading="lazy"
+            title="<?= htmlspecialchars($student['photo'] ?? 'Default') ?>"
+            >
+        </div>
         <div class="lrn">LRN: <?= htmlspecialchars($student['lrn']) ?></div>
         <div class="name"><?= htmlspecialchars($student['full_name']) ?></div>
         <div class="idnum">ID: <?= htmlspecialchars($student['id_number']) ?></div>

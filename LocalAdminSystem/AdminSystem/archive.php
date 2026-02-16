@@ -301,7 +301,14 @@ img{width:70px;height:90px;object-fit:cover;border-radius:6px;border:2px solid #
                             <td><?= htmlspecialchars($row['home_address']) ?></td>
                             <td><?= htmlspecialchars($row['guardian_name']) ?></td>
                             <td><?= htmlspecialchars($row['guardian_contact']) ?></td>
-                            <td><?= displayPhoto($row['photo'] ?? null, $row['photo_blob'] ?? null) ?></td>
+                            <td>
+                                <img 
+                                    src="<?= displayPhoto($row['photo'] ?? null, $row['photo_blob'] ?? null) ?>" 
+                                    alt="Photo"
+                                    loading="lazy"
+                                    title="<?= htmlspecialchars($row['photo'] ?? 'Default') ?>"
+                                >
+                            </td>
                             <td><?= $row['printed_at'] ? date('Y-m-d H:i:s', strtotime($row['printed_at'])) : '-' ?></td>
                             <td><span class="status-badge <?= $row['status']=='Released'?'status-released':'status-pending' ?>"><?= htmlspecialchars($row['status']) ?></span></td>
                             <td><?= $row['released_at'] ? date('Y-m-d H:i:s', strtotime($row['released_at'])) : '-' ?></td>

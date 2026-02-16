@@ -1,26 +1,21 @@
 <?php
-//require_once __DIR__ . '/admin-auth.php';
+session_start();
 require_once __DIR__ . '/../Config/database.php';
 
 // Clear remember-me cookies
 setcookie('remember_username', '', time() - 3600, "/");
 setcookie('remember_token', '', time() - 3600, "/");
 
-// Clear token in DB if admin is logged in
+// Clear token in DB
 if (isset($_SESSION['admin_id'])) {
-    $id = $_SESSION['admin_id'];
-
     $stmt = $pdo->prepare("UPDATE admins SET remember_token = NULL WHERE id = :id");
-    $stmt->execute(['id' => $id]);
+    $stmt->execute(['id' => $_SESSION['admin_id']]);
 }
 
-// Clear all session variables
+// Destroy session
 $_SESSION = [];
-
-// Destroy the session
 session_destroy();
 
-// Redirect back to login page
+// Redirect to login
 header("Location: login.php");
 exit;
-?>
