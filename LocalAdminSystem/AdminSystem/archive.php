@@ -149,6 +149,49 @@ function buildLink($params, $value='', $type='') {
 $juniorGrades = ['Grade 7','Grade 8','Grade 9','Grade 10'];
 $seniorStrands = ['HUMMS','ABM','STEM','GAS','ICT'];
 $courses = ['BSBA','BSE','BEE','BSCS','BAE'];
+
+// ================= OPTIMIZE PHOTO RESTORE =================
+$uploadsDir = __DIR__ . '/Uploads/';
+if (!is_dir($uploadsDir)) mkdir($uploadsDir, 0777, true);
+
+$missingPhotos = [];
+foreach ($result as $row) {
+    if (!empty($row['photo']) && !file_exists($uploadsDir . basename($row['photo']))) {
+        $missingPhotos[] = $row['photo'];
+    }
+}
+
+$blobs = [];
+if ($missingPhotos) {
+    $placeholders = implode(',', array_fill(0, count($missingPhotos), '?'));
+
+    // Check register table first
+    $stmt = $pdo->prepare("SELECT photo, photo_blob FROM register WHERE photo IN ($placeholders)");
+    $stmt->execute($missingPhotos);
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $blobs[$row['photo']] = $row['photo_blob'];
+    }
+
+    // Then check archive table for any still missing
+    $stillMissing = array_diff($missingPhotos, array_keys($blobs));
+    if ($stillMissing) {
+        $placeholders = implode(',', array_fill(0, count($stillMissing), '?'));
+        $stmt = $pdo->prepare("SELECT photo, photo_blob FROM archive WHERE photo IN ($placeholders)");
+        $stmt->execute($stillMissing);
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $blobs[$row['photo']] = $row['photo_blob'];
+        }
+    }
+}
+
+function displayPhotoOptimized($photoFilename = null, $photoBlob = null, $blobs = []) {
+    if (!$photoBlob && $photoFilename && isset($blobs[$photoFilename])) {
+        $photoBlob = $blobs[$photoFilename];
+    }
+    return displayPhoto($photoFilename, $photoBlob);
+}
+
+
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -305,7 +348,7 @@ img{width:70px;height:90px;object-fit:cover;border-radius:6px;border:2px solid #
                             <td><?= htmlspecialchars($row['guardian_contact']) ?></td>
                             <td>
                                 <img 
-                                    src="<?= displayPhoto($row['photo'] ?? null, $row['photo_blob'] ?? null) ?>" 
+                                    src="<?= getStudentPhotoUrl($row) ?>" 
                                     alt="Photo"
                                     loading="lazy"
                                     title="<?= htmlspecialchars($row['photo'] ?? 'Default') ?>"

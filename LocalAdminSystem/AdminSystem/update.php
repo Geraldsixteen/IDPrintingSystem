@@ -8,70 +8,72 @@ $msg = '';
 if (!isset($_GET['id'])) die("No record ID specified.");
 $id = intval($_GET['id']);
 
-/* FETCH RECORD */
-$stmt = $pdo->prepare("SELECT * FROM register WHERE id=:id");
-$stmt->execute([':id'=>$id]);
+// ---------------- FETCH RECORD ----------------
+$stmt = $pdo->prepare("SELECT * FROM register WHERE id = :id");
+$stmt->execute([':id' => $id]);
 $formData = $stmt->fetch(PDO::FETCH_ASSOC);
 $stmtOld = $formData; // store original data for comparison
-if(!$formData) die("Record not found.");
+if (!$formData) die("Record not found.");
 
-/* Upload folder */
-$uploadDir = __DIR__.'/Uploads/';
-if(!is_dir($uploadDir)) mkdir($uploadDir,0777,true);
+// ---------------- UPLOAD DIR ----------------
+$uploadDir = __DIR__ . '/Uploads/';
+if (!is_dir($uploadDir)) mkdir($uploadDir, 0777, true);
 
-/* FORM SUBMIT */
-if($_SERVER['REQUEST_METHOD']==='POST'){
+// ---------------- HANDLE FORM SUBMIT ----------------
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
-    // Collect form fields
-    $fields = ['lrn','full_name','grade','strand','course','home_address','guardian_name','guardian_contact'];
-    foreach($fields as $f){
+    // Collect fields
+    $fields = ['lrn', 'full_name', 'grade', 'strand', 'course', 'home_address', 'guardian_name', 'guardian_contact'];
+    foreach ($fields as $f) {
         $formData[$f] = trim($_POST[$f] ?? '');
     }
 
-    // Handle level selector
-    if(!empty($_POST['level'])){
-        list($type,$value) = explode(':',$_POST['level']);
-        $formData['grade']=$formData['strand']=$formData['course']='';
+    // Handle level selector (grade/strand/course)
+    if (!empty($_POST['level'])) {
+        list($type, $value) = explode(':', $_POST['level']);
+        $formData['grade'] = $formData['strand'] = $formData['course'] = '';
         $formData[$type] = $value;
     }
 
-    // Handle photo upload
-    if(!empty($_FILES['photo']['tmp_name'])){
+    // ---------------- HANDLE PHOTO ----------------
+    if (!empty($_FILES['photo']['tmp_name'])) {
         $info = getimagesize($_FILES['photo']['tmp_name']);
-        if(!$info){
+        if (!$info) {
             $msg = "Invalid image.";
         } else {
-            $filename = $id.'_'.time().'.jpg';
-            $dest = $uploadDir.$filename;
+            $filename = $id . '_' . time() . '.jpg';
+            $dest = $uploadDir . $filename;
 
-            // Resize and compress
+            // Resize to 300x400
             $src = imagecreatefromstring(file_get_contents($_FILES['photo']['tmp_name']));
-            $dst = imagecreatetruecolor(300,400);
-            imagecopyresampled($dst,$src,0,0,0,0,300,400,imagesx($src),imagesy($src));
-            imagejpeg($dst,$dest,85);
+            $dst = imagecreatetruecolor(300, 400);
+            imagecopyresampled($dst, $src, 0, 0, 0, 0, 300, 400, imagesx($src), imagesy($src));
+            imagejpeg($dst, $dest, 85);
             imagedestroy($src);
             imagedestroy($dst);
 
             $blob = file_get_contents($dest);
 
             // Duplicate photo check
-            $hash = sha1($blob);
-            $all = $pdo->query("SELECT id, photo_blob FROM register WHERE id != $id")->fetchAll(PDO::FETCH_ASSOC);
-            foreach($all as $row){
+            $stmtCheck = $pdo->prepare("SELECT id, photo_blob FROM register WHERE id != :id");
+            $stmtCheck->execute([':id'=>$id]);
+            $all = $stmtCheck->fetchAll(PDO::FETCH_ASSOC);
+
+            foreach ($all as $row) {
                 $existingBlob = $row['photo_blob'];
                 if (is_resource($existingBlob)) $existingBlob = stream_get_contents($existingBlob);
-                if(sha1($existingBlob) === $hash){
+                if (sha1($existingBlob) === sha1($blob)) {
                     unlink($dest);
                     $msg = "Duplicate photo detected.";
                     break;
                 }
             }
 
-            // Update if no duplicate
-            if($msg === ''){
-                if(!empty($formData['photo'])){
-                    $old = $uploadDir.$formData['photo'];
-                    if(file_exists($old)) unlink($old);
+            // Save if no duplicate
+            if ($msg === '') {
+                if (!empty($formData['photo'])) {
+                    $old = $uploadDir . $formData['photo'];
+                    if (file_exists($old)) unlink($old);
                 }
                 $formData['photo'] = $filename;
                 $formData['photo_blob'] = $blob;
@@ -79,71 +81,64 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
         }
     }
 
-    // UPDATE DB if no errors
-    // ================= CHECK IF ANYTHING CHANGED =================
-
-$changed = false;
-
-// compare fields
-$compareFields = ['lrn','full_name','grade','strand','course','home_address','guardian_name','guardian_contact'];
-
-foreach($compareFields as $f){
-    if(($formData[$f] ?? '') != ($stmtOld[$f] ?? '')){
-        $changed = true;
-        break;
+    // ---------------- CHECK CHANGES ----------------
+    $changed = false;
+    $compareFields = ['lrn','full_name','grade','strand','course','home_address','guardian_name','guardian_contact'];
+    foreach ($compareFields as $f) {
+        if (($formData[$f] ?? '') != ($stmtOld[$f] ?? '')) {
+            $changed = true;
+            break;
+        }
     }
-}
+    if (!empty($_FILES['photo']['tmp_name'])) $changed = true;
 
-// photo changed?
-if(!empty($_FILES['photo']['tmp_name'])) $changed = true;
+    if (!$changed) {
+        echo "<script>
+            alert('⚠ Nothing new to update.');
+            window.location='update.php?id=$id';
+        </script>";
+        exit;
+    }
 
-// NOTHING NEW
-if(!$changed){
-    echo "<script>
-        alert('⚠ Nothing new to update.');
-        window.location='update.php?id=$id';
-    </script>";
+    // ---------------- UPDATE DATABASE ----------------
+    $stmt = $pdo->prepare("
+        UPDATE register SET
+            lrn=:lrn,
+            full_name=:full_name,
+            grade=:grade,
+            strand=:strand,
+            course=:course,
+            home_address=:home_address,
+            guardian_name=:guardian_name,
+            guardian_contact=:guardian_contact,
+            photo=:photo,
+            photo_blob=:photo_blob
+        WHERE id=:id
+    ");
+
+    $stmt->bindValue(':lrn', $formData['lrn']);
+    $stmt->bindValue(':full_name', $formData['full_name']);
+    $stmt->bindValue(':grade', $formData['grade']);
+    $stmt->bindValue(':strand', $formData['strand']);
+    $stmt->bindValue(':course', $formData['course']);
+    $stmt->bindValue(':home_address', $formData['home_address']);
+    $stmt->bindValue(':guardian_name', $formData['guardian_name']);
+    $stmt->bindValue(':guardian_contact', $formData['guardian_contact']);
+    $stmt->bindValue(':photo', $formData['photo']);
+    $stmt->bindValue(':photo_blob', $formData['photo_blob'] ?? null, PDO::PARAM_LOB); // <-- fix UTF8 issue
+    $stmt->bindValue(':id', $id, PDO::PARAM_INT);
+
+    $stmt->execute();
+
+    header("Location: records.php?updated=1");
     exit;
 }
 
-// ================= UPDATE =================
-
-$stmt = $pdo->prepare("
-    UPDATE register SET
-        lrn=:lrn,
-        full_name=:full_name,
-        grade=:grade,
-        strand=:strand,
-        course=:course,
-        home_address=:home_address,
-        guardian_name=:guardian_name,
-        guardian_contact=:guardian_contact,
-        photo=:photo,
-        photo_blob=:photo_blob
-    WHERE id=:id
-");
-
-$stmt->execute([
-    ':lrn'=>$formData['lrn'],
-    ':full_name'=>$formData['full_name'],
-    ':grade'=>$formData['grade'],
-    ':strand'=>$formData['strand'],
-    ':course'=>$formData['course'],
-    ':home_address'=>$formData['home_address'],
-    ':guardian_name'=>$formData['guardian_name'],
-    ':guardian_contact'=>$formData['guardian_contact'],
-    ':photo'=>$formData['photo'],
-    ':photo_blob'=>$formData['photo_blob'],
-    ':id'=>$id
-]);
-
-header("Location: records.php?updated=1");
-exit;
-
-}
-
-$themeClass = (isset($_COOKIE['theme']) && $_COOKIE['theme']=='dark') ? 'dark' : '';
+// ---------------- THEME ----------------
+$themeClass = (isset($_COOKIE['theme']) && $_COOKIE['theme'] == 'dark') ? 'dark' : '';
 ?>
+
+<!-- ---------------- HTML FORM ---------------- -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -177,17 +172,10 @@ button:hover{ background:#2d3a80; }
 .message{text-align:center;padding:10px;margin-bottom:10px;border-radius:5px;font-weight:600;}
 .success{background:#2ecc71;color:#fff;}
 .error{background:#e74c3c;color:#fff;}
-.photoPreview {
-    width: 70px;
-    height: 90px;
-    object-fit: cover;
-    border: 2px solid #000;
-    border-radius: 5px;
-}
+.photoPreview { width:70px; height:90px; object-fit:cover; border:2px solid #000; border-radius:5px; }
 </style>
 </head>
 <body class="<?= $themeClass ?>">
-
 <div class="sidebar">
     <div>
         <h2>ID System</h2>
@@ -198,12 +186,10 @@ button:hover{ background:#2d3a80; }
     </div>
     <div class="toggle-mode" onclick="toggleMode()">🌙 Dark Mode</div>
 </div>
-
 <div class="main">
     <div class="topbar"><a href="records.php">&times;</a>Edit Record</div>
     <div class="container">
         <div class="card">
-
             <form action="update.php?id=<?= $id ?>" method="POST" enctype="multipart/form-data">
                 <label>LRN</label>
                 <input type="text" name="lrn" value="<?= htmlspecialchars($formData['lrn']) ?>" required>
@@ -242,9 +228,9 @@ button:hover{ background:#2d3a80; }
                 <label>Upload Photo (Leave empty to keep current)</label>
                 <input type="file" name="photo" accept="image/*" onchange="previewImage(this)">
 
-                <!-- Preview Container -->
                 <div id="photoPreview">
-                    <img id="previewImg" src="<?= displayPhoto($formData['photo'] ?? null, $formData['photo_blob'] ?? null) ?>" class="photoPreview" alt="Photo">
+                    <?php $previewURL = getStudentPhotoUrl($formData); ?>
+                    <img id="previewImg" src="<?= $previewURL ?>" class="photoPreview" alt="Photo">
                 </div>
 
                 <button type="submit">Update Record</button>

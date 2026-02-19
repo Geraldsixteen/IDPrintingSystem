@@ -1,13 +1,15 @@
-<?php  
+<?php
 require_once __DIR__ . '/admin-auth.php';
 require_once __DIR__ . '/../Config/database.php';
 require_once __DIR__ . '/photo-helper.php';
 
+$printed = $_GET['printed'] ?? '';
+
 // ================= GET FILTERS =================
-$search = isset($_GET['search']) ? trim($_GET['search']) : '';
-$grade  = isset($_GET['grade']) ? $_GET['grade'] : '';
-$strand = isset($_GET['strand']) ? $_GET['strand'] : '';
-$course = isset($_GET['course']) ? $_GET['course'] : '';
+$search = $_GET['search'] ?? '';
+$grade  = $_GET['grade'] ?? '';
+$strand = $_GET['strand'] ?? '';
+$course = $_GET['course'] ?? '';
 
 // ================= FILTER OPTIONS =================
 $juniorGrades = ['Grade 7','Grade 8','Grade 9','Grade 10'];
@@ -18,46 +20,42 @@ $courses = ['BSBA','BSE','BEE','BSCS','BAE'];
 $sql = "SELECT * FROM register WHERE 1=1";
 $params = [];
 
-if (!empty($search)) {
+if ($search) {
     $sql .= " AND (lrn LIKE :search OR full_name LIKE :search OR id_number LIKE :search)";
     $params[':search'] = "%$search%";
 }
-if (!empty($grade)) {
+if ($grade) {
     $sql .= " AND grade = :grade";
     $params[':grade'] = $grade;
 }
-if (!empty($strand)) {
+if ($strand) {
     $sql .= " AND strand = :strand";
     $params[':strand'] = $strand;
 }
-if (!empty($course)) {
+if ($course) {
     $sql .= " AND course = :course";
     $params[':course'] = $course;
 }
 
 $sql .= " ORDER BY created_at DESC";
-
 $stmt = $pdo->prepare($sql);
 $stmt->execute($params);
 $result = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 // ================= THEME =================
-$themeClass = (isset($_COOKIE['theme']) && $_COOKIE['theme']=='dark') ? 'dark' : '';
-
+$themeClass = ($_COOKIE['theme'] ?? '') === 'dark' ? 'dark' : '';
 $updated = isset($_GET['updated']);
 
-// Build filter links
-function buildLink($params, $typeValue='', $type='') {
-    if ($type && $typeValue !== '') {
-        $params[$type] = $typeValue;
-        if ($type == 'grade') unset($params['strand'], $params['course']);
-        elseif ($type == 'strand') unset($params['grade'], $params['course']);
-        elseif ($type == 'course') unset($params['grade'], $params['strand']);
+function buildLink($params, $value='', $type='') {
+    if ($type && $value) {
+        $params[$type] = $value;
+        if ($type === 'grade')  unset($params['strand'], $params['course']);
+        if ($type === 'strand') unset($params['grade'], $params['course']);
+        if ($type === 'course') unset($params['grade'], $params['strand']);
     }
-    return '?' . http_build_query($params);
+    return '?'.http_build_query($params);
 }
 ?>
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -103,7 +101,6 @@ img { width:70px; height:90px; object-fit:cover; border-radius:6px; border:2px s
 .dropdown-content a:hover, .dropdown-content a.active { background-color: #002b80; color: white; }
 .dropdown:hover .dropdown-content { display: block; }
 @media (max-width:768px) { body { flex-direction:column; } .sidebar { width:100%; flex-direction:row; overflow-x:auto; } .sidebar a { margin:3px 10px; } .card { width:95%; } table { min-width:auto; font-size:12px; } .toggle-mode{height:60px;line-height:40px;margin:10px; white-space: nowrap;} }
-img { width:70px; height:90px; object-fit:cover; border-radius:6px; border:2px solid #ddd; }
 .success-msg{
     background:#2ecc71;
     color:white;
@@ -114,7 +111,6 @@ img { width:70px; height:90px; object-fit:cover; border-radius:6px; border:2px s
     font-weight:600;
     animation:fadeout 3s forwards;
 }
-
 @keyframes fadeout{
     0%{opacity:1;}
     70%{opacity:1;}
@@ -143,7 +139,13 @@ img { width:70px; height:90px; object-fit:cover; border-radius:6px; border:2px s
                 <div class="success-msg">
                     ✅ Record successfully updated!
                 </div>
-                <?php endif; ?>
+            <?php endif; ?>
+
+            <?php if($printed): ?>
+        <div class="success-msg">
+            ✅ ID printed and archived successfully!
+        </div>
+    <?php endif; ?>
             <!-- Filters -->
             <div class="filters">
                 <!-- Junior High -->
@@ -155,6 +157,7 @@ img { width:70px; height:90px; object-fit:cover; border-radius:6px; border:2px s
                         <?php endforeach; ?>
                     </div>
                 </div>
+
                 <!-- Senior High -->
                 <div class="dropdown">
                     <button class="dropbtn <?= in_array($strand,$seniorStrands)?'active':'' ?>" data-type="strand">Senior High</button>
@@ -164,6 +167,7 @@ img { width:70px; height:90px; object-fit:cover; border-radius:6px; border:2px s
                         <?php endforeach; ?>
                     </div>
                 </div>
+
                 <!-- College -->
                 <div class="dropdown">
                     <button class="dropbtn <?= in_array($course,$courses)?'active':'' ?>" data-type="course">College</button>
@@ -173,6 +177,7 @@ img { width:70px; height:90px; object-fit:cover; border-radius:6px; border:2px s
                         <?php endforeach; ?>
                     </div>
                 </div>
+
                 <div class="dropdown">
                     <a href="records.php"><button class="dropbtn">Reset Filters</button></a>
                 </div>
@@ -214,7 +219,7 @@ img { width:70px; height:90px; object-fit:cover; border-radius:6px; border:2px s
                             <td><?= htmlspecialchars($row['guardian_contact']) ?></td>
                             <td>
                                 <img 
-                                    src="<?= displayPhoto($row['photo'] ?? null, $row['photo_blob'] ?? null) ?>" 
+                                    src="<?= getStudentPhotoUrl($row) ?>" 
                                     alt="Photo"
                                     loading="lazy"
                                     title="<?= htmlspecialchars($row['photo'] ?? 'Default') ?>"
@@ -225,7 +230,10 @@ img { width:70px; height:90px; object-fit:cover; border-radius:6px; border:2px s
                             <td><?= $row['restored_at'] ? date('Y-m-d H:i:s', strtotime($row['restored_at'])) : '-' ?></td>
                             <td class="actions">
                                 <a href="update.php?id=<?= $row['id'] ?>"><button class="edit-btn">Edit</button></a>
-                                <a href="print.php?id=<?= $row['id'] ?>"><button class="edit-btn" style="background:#3498db;">🖨️ Print</button></a>
+                                <a href="generate_id.php?id=<?= $row['id'] ?>" 
+                                onclick="return confirmPrintArchive('<?= htmlspecialchars($row['full_name']) ?>');">
+                                    <button class="edit-btn" style="background:#3498db;">🖨️ Print</button>
+                                </a>
                             </td>
                         </tr>
                         <?php endforeach; ?>
@@ -234,9 +242,25 @@ img { width:70px; height:90px; object-fit:cover; border-radius:6px; border:2px s
                     <?php endif; ?>
                 </tbody>
             </table>
+
         </div>
     </div>
 </div>
+
+<script>
+function confirmPrintArchive(name) {
+    return confirm(`⚠ Are you sure you want to print and archive the ID for "${name}"?\nThis will remove it from the active records.`);
+}
+
+document.addEventListener("DOMContentLoaded", function() {
+    const url = new URL(window.location);
+    if (url.searchParams.has('updated')) {
+        // Remove updated parameter from URL
+        url.searchParams.delete('updated');
+        window.history.replaceState({}, document.title, url.pathname + url.search);
+    }
+});
+</script>
 
 <script src="../theme.js"></script>
 </body>

@@ -1,42 +1,54 @@
 <?php
 /**
- * displayPhoto
- * Returns the correct image URL or base64 for display in <img>
- * Auto-restores missing files from DB BLOB
+ * Get a student photo URL for display.
+ * Restores from BLOB if missing, otherwise returns placeholder.
  *
- * @param string|null $filename - the photo filename stored in Uploads folder
- * @param string|null $blob - the photo BLOB from the database
- * @return string - URL or data URI
+ * @param array|null $student Student record with 'photo' and 'photo_blob'.
+ * @param int $width Width of placeholder if needed.
+ * @param int $height Height of placeholder if needed.
+ * @return string Relative URL to photo for <img src="">
  */
-function displayPhoto($filename = null, $blob = null) {
-    $uploadsDir = __DIR__ . "/Uploads/";  // main folder (uppercase U)
-
-    // Ensure folder exists
+function getStudentPhotoUrl($student = null, int $width = 70, int $height = 90): string {
+    $uploadsDir = __DIR__ . '/Uploads/'; // Make sure folder exists
     if (!is_dir($uploadsDir)) mkdir($uploadsDir, 0777, true);
 
-    // Safe filename
-    $filename = basename($filename ?? '');
+    $filename = basename($student['photo'] ?? '');
     $filePath = $uploadsDir . $filename;
 
-    // 1️⃣ Auto-restore file if missing and BLOB exists
-    if ($filename && !file_exists($filePath) && $blob) {
+    // 1️⃣ Use file if valid
+    if ($filename && file_exists($filePath) && @getimagesize($filePath)) {
+        return 'Uploads/' . $filename;
+    }
+
+    // 2️⃣ Restore from BLOB if available
+    if (!file_exists($filePath) && !empty($student['photo_blob'])) {
+        $blob = $student['photo_blob'];
         if (is_resource($blob)) $blob = stream_get_contents($blob);
+
+        // Decode base64 if necessary
+        if (preg_match('/^[A-Za-z0-9+\/=]+$/', trim($blob))) {
+            $decoded = base64_decode($blob, true);
+            if ($decoded !== false) $blob = $decoded;
+        }
+
         file_put_contents($filePath, $blob);
+
+        if (@getimagesize($filePath)) {
+            return 'Uploads/' . $filename;
+        } else {
+            @unlink($filePath); // remove corrupted
+        }
     }
 
-    // 2️⃣ Use file if exists
-    if ($filename && file_exists($filePath)) {
-        return "Uploads/{$filename}";
+    // 3️⃣ Fallback placeholder
+    $default = $uploadsDir . 'default.png';
+    if (!file_exists($default)) {
+        $im = imagecreatetruecolor($width, $height);
+        $bg = imagecolorallocate($im, 200, 200, 200);
+        imagefilledrectangle($im, 0, 0, $width, $height, $bg);
+        imagepng($im, $default);
+        imagedestroy($im);
     }
 
-    // 3️⃣ Fallback to BLOB if file somehow still missing
-    if ($blob) {
-        if (is_resource($blob)) $blob = stream_get_contents($blob);
-        $finfo = new finfo(FILEINFO_MIME_TYPE);
-        $mime = $finfo->buffer($blob) ?: 'image/jpeg';
-        return "data:{$mime};base64," . base64_encode($blob);
-    }
-
-    // 4️⃣ Default placeholder
-    return "Uploads/default.png"; // make sure default.png exists
+    return 'Uploads/default.png';
 }

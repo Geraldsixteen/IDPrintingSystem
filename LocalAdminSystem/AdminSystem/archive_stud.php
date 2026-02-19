@@ -5,7 +5,8 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST' || empty($_POST['id'])) {
     exit("Invalid request");
 }
 
-$id = intval($_POST['id']);
+$id = intval($_POST['id'] ?? $_GET['id'] ?? 0);
+if ($id <= 0) exit("Invalid ID");
 
 try {
     // Fetch student from register

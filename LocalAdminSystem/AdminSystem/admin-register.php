@@ -5,155 +5,133 @@ $err = '';
 $success = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+
     $username = trim($_POST['username'] ?? '');
     $password = $_POST['password'] ?? '';
-    $confirmPassword = $_POST['confirm_password'] ?? '';
+    $confirm  = $_POST['confirm_password'] ?? '';
 
-    // Validate username
-    if (empty($username)) {
-        $err = "Username is required.";
+    // ================= VALIDATION =================
+    if ($username === '') {
+        $err = "Username required.";
     } elseif (strlen($username) < 3) {
-        $err = "Username must be at least 3 characters long.";
-    }
-
-    // Validate password
-    if (!$err && $password !== $confirmPassword) {
+        $err = "Username must be at least 3 characters.";
+    } elseif (strlen($password) < 6) {
+        $err = "Password must be at least 6 characters.";
+    } elseif ($password !== $confirm) {
         $err = "Passwords do not match.";
-    } elseif (!$err && strlen($password) < 6) {
-        $err = "Password must be at least 6 characters long.";
     }
 
     if (!$err) {
         try {
-            // Check total admins
-            $stmtTotal = $pdo->query("SELECT COUNT(*) AS total FROM admins");
-            $totalRow = $stmtTotal->fetch();
 
-            if ($totalRow['total'] >= 3) {
-                $err = "Only 3 admin accounts are allowed.";
+            // LIMIT ADMIN COUNT
+            $count = $pdo->query("SELECT COUNT(*) FROM admins")->fetchColumn();
+
+            if ($count >= 3) {
+                $err = "Maximum of 3 admins allowed.";
             } else {
-                // Check if username already exists
-                $stmtCheck = $pdo->prepare("SELECT id FROM admins WHERE username = ?");
-                $stmtCheck->execute([$username]);
 
-                if ($stmtCheck->rowCount() > 0) {
-                    $err = "That username is already taken.";
+                // CHECK DUPLICATE USERNAME
+                $check = $pdo->prepare("SELECT id FROM admins WHERE username=?");
+                $check->execute([$username]);
+
+                if ($check->fetch()) {
+                    $err = "Username already exists.";
                 } else {
-                    // Insert new admin
-                    $hashed = password_hash($password, PASSWORD_DEFAULT);
-                    $stmtInsert = $pdo->prepare("INSERT INTO admins (username, password) VALUES (?, ?)");
-                    if ($stmtInsert->execute([$username, $hashed])) {
-                        $success = "✅ Admin registration successful! You can now login.";
+
+                    // CREATE ADMIN
+                    $hash = password_hash($password, PASSWORD_DEFAULT);
+
+                    $insert = $pdo->prepare("INSERT INTO admins (username,password) VALUES (?,?)");
+
+                    if ($insert->execute([$username,$hash])) {
+                        $success = "Admin created successfully.";
+                        $_POST = []; // clear form
                     } else {
-                        $err = "Database error while creating admin.";
+                        $err = "Registration failed.";
                     }
                 }
             }
+
         } catch (PDOException $e) {
-            $err = "Database error: " . $e->getMessage();
+            $err = "Database error.";
         }
     }
 }
 ?>
 
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Admin Registration</title>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/7.0.1/css/all.min.css">
+<title>Admin Register</title>
+
 <style>
-body {
-    background: rgb(40, 85, 153);
-    margin: 0;
-    padding: 0;
-    display: flex;
-    justify-content: center;
-    height: 100vh;
-    align-items: center;
-    font-family: Arial, sans-serif;
+body{
+background:#285599;
+display:flex;
+justify-content:center;
+align-items:center;
+height:100vh;
+font-family:Arial;
 }
-ul {
-    background: rgb(236, 236, 236);
-    border-radius: 5px;
-    padding: 3em;
-    box-shadow: 8px 8px 10px rgba(0,0,0,.3);
-    list-style: none;
-    margin: 0;
-    width: 100%;
-    max-width: 400px;
-    text-align: center;
+
+ul{
+background:#ececec;
+padding:3em;
+width:350px;
+border-radius:5px;
+list-style:none;
+text-align:center;
 }
-#username, #password, #confirm_password {
-    padding: 10px;
-    width: 100%;
-    font-size: 18px;
-    border: 1px solid rgb(180, 180, 180);
-    margin-bottom: 15px;
-    outline: none;
-    border-radius: 3px;
+
+input{
+width:100%;
+padding:10px;
+margin-bottom:15px;
 }
-#Register {
-    background: rgb(0, 29, 67);
-    padding: 10px;
-    width: 100%;
-    font-size: 20px;
-    border: none;
-    border-radius: 3px;
-    font-weight: bold;
-    color: #fff;
-    transition: .2s ease;
-    cursor: pointer;
+
+button{
+width:100%;
+padding:10px;
+background:#001d43;
+color:white;
+border:none;
+font-weight:bold;
 }
-#Register:hover {
-    background: rgba(0, 29, 67, 0.8);
-}
-ul img {
-    display: block;
-    margin: 0 auto 1em auto;
-    width: 80px;
-    height: 100px;
-}
-.error { color: red; margin-bottom: 10px; }
-.success { color: green; margin-bottom: 10px; }
-a { font-family: Arial, Helvetica, sans-serif; text-decoration: none; color: black; display: block; text-align: center; margin-top: 10px; }
-a:hover { text-decoration: underline; }
-li i { margin-right: 8px; color: rgb(40, 85, 153); }
+
+ul img { display: block; margin: 0 auto 1em auto; width: 80px; height: 100px; }
+
+.login{text-decoration:none; color:#001d43; display:block; margin-top:10px;}
+.login:hover { text-decoration: underline; }
+
+.error{color:red}
+.success{color:green}
 </style>
 </head>
+
 <body>
 
-<form method="POST">
-  <ul>
-    <img src="../cdlb.png" alt="Logo">
-    <h3>Admin Registration</h3>
+<form method="post" autocomplete="off">
 
-    <?php if ($err): ?>
-      <div class="error"><?= htmlspecialchars($err) ?></div>
-    <?php endif; ?>
+<ul>
+<img src="../cdlb.png" alt="Logo">
+<h3>Admin Registration</h3>
 
-    <?php if ($success): ?>
-      <div class="success"><?= htmlspecialchars($success) ?></div>
-    <?php endif; ?>
+<?php if($err): ?><div class="error"><?= $err ?></div><?php endif; ?>
+<?php if($success): ?><div class="success"><?= $success ?></div><?php endif; ?>
 
-    <li>
-        <i class="fas fa-user"></i>
-        <input type="text" name="username" id="username" placeholder="Username" value="<?= htmlspecialchars($_POST['username'] ?? '') ?>" required>
-    </li>
-    <li>
-        <i class="fas fa-lock"></i>
-        <input type="password" name="password" id="password" placeholder="Password" required>
-    </li>
-    <li>
-        <i class="fas fa-lock"></i>
-        <input type="password" name="confirm_password" id="confirm_password" placeholder="Confirm Password" required>
-    </li>
-    <li>
-        <button type="submit" id="Register">Register</button>
-    </li>
-    <a href="login.php">Already have an account? Login</a>
-  </ul>
+<input type="text" name="username" placeholder="Username" autocomplete="off" required>
+
+<input type="password" name="password" placeholder="Password" autocomplete="new-password" required>
+
+<input type="password" name="confirm_password" placeholder="Confirm Password" autocomplete="new-password" required>
+
+<button>Register</button>
+
+<a class="login" href="login.php">Back to Login</a>
+
+</ul>
+
 </form>
 
 </body>
