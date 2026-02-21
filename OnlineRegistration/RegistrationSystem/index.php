@@ -3,7 +3,6 @@ session_start();
 require_once __DIR__ . '/../Config/database.php';
 
 function generate_uuid() {
-    // Generates a random UUID v4
     return sprintf(
         '%04x%04x-%04x-%04x-%04x-%04x%04x%04x',
         mt_rand(0, 0xffff), mt_rand(0, 0xffff),
@@ -14,7 +13,6 @@ function generate_uuid() {
     );
 }
 
-
 // Ensure large uploads work
 ini_set('upload_max_filesize', '10M');
 ini_set('post_max_size', '12M');
@@ -22,7 +20,6 @@ ini_set('max_execution_time', '300');
 ini_set('display_errors', 0);
 error_reporting(E_ALL);
 
-// JSON helper
 function send_json($arr){
     if(ob_get_level()) ob_end_clean();
     header('Content-Type: application/json; charset=utf-8');
@@ -31,133 +28,106 @@ function send_json($arr){
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-
-    $level = $_POST['level'] ?? '';
+    $level = $_POST['level'] ?? ''; // junior, senior, college
     $lrn = trim($_POST['lrn'] ?? '');
+    $full_name = trim($_POST['full_name'] ?? '');
+    $strand = trim($_POST['strand'] ?? '');
     $home_address = trim($_POST['home_address'] ?? '');
     $guardian_name = trim($_POST['guardian_name'] ?? '');
     $guardian_contact = trim($_POST['guardian_contact'] ?? '');
     $photo_base64 = $_POST['photo_base64'] ?? '';
 
-    if (!$lrn || !$photo_base64) {
-        send_json(['success'=>false,'msg'=>'Missing required fields.']);
+    if (!$lrn || !$full_name || (!$strand && $level != 'college')) {
+        send_json(['success'=>false,'msg'=>'Please fill in all required fields.']);
     }
+
+    if (!$photo_base64) {
+        send_json(['success'=>false,'msg'=>'No photo uploaded']);
+    }
+
+    if (preg_match('/^data:image\/\w+;base64,/', $photo_base64)) {
+        $photo_base64 = preg_replace('/^data:image\/\w+;base64,/', '', $photo_base64);
+    }
+
+    $image_data = base64_decode($photo_base64);
+    if (!$image_data) send_json(['success'=>false,'msg'=>'Invalid image data']);
+
+    $photo_filename = $lrn . '_' . time() . '.jpg';
 
     try {
         $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-        // ================================
-        // 1️⃣ CHECK IF STUDENT IS ENROLLED
-        // ================================
-        $stmtEnroll = $pdo->prepare("
-            SELECT * FROM enrolled_students
-            WHERE lrn = :lrn
-            AND status = 'enrolled'
+        // ===== CHECK IF STUDENT EXISTS IN enrolled_students =====
+        $stmtCheck = $pdo->prepare("
+            SELECT * FROM enrolled_students 
+            WHERE lrn=:lrn
         ");
-        $stmtEnroll->execute([':lrn' => $lrn]);
-        $enrolled = $stmtEnroll->fetch(PDO::FETCH_ASSOC);
+        $stmtCheck->execute([':lrn'=>$lrn]);
+        $enrolled = $stmtCheck->fetch(PDO::FETCH_ASSOC);
 
         if (!$enrolled) {
-            // ❌ Stop registration for non-enrolled students
-            send_json([
-                'success' => false,
-                'msg' => 'You are not enrolled and cannot register.'
-            ]);
+            send_json(['success'=>false,'msg'=>"You are not enrolled in the system."]);
         }
 
-        // Prevent level tampering
-        if ($level !== $enrolled['level']) {
-            send_json([
-                'success'=>false,
-                'msg'=>'Level mismatch. Registration denied.'
-            ]);
-        }
-
-        // ================================
-        // 2️⃣ CHECK DUPLICATE REGISTRATION
-        // ================================
-        $check = $pdo->prepare("SELECT 1 FROM register WHERE lrn = :lrn");
-        $check->execute([':lrn'=>$lrn]);
-        if ($check->fetch()) {
-            send_json([
-                'success'=>false,
-                'msg'=>'This LRN is already registered.'
-            ]);
-        }
-
-        // ================================
-        // 3️⃣ PROCESS PHOTO
-        // ================================
-        if (preg_match('/^data:image\/\w+;base64,/', $photo_base64)) {
-            $photo_base64 = preg_replace('/^data:image\/\w+;base64,/', '', $photo_base64);
-        }
-        $image_binary = base64_decode($photo_base64);
-        if (!$image_binary) send_json(['success'=>false,'msg'=>'Invalid image data.']);
-
-        // ================================
-        // 4️⃣ GENERATE ID NUMBER
-        // ================================
-        $currentYear = date('y');
+        // ===== AUTO-GENERATE ID NUMBER =====
+        $currentYear = date('y'); // e.g., '26'
         $prefix = 'S' . $currentYear . '-';
         $stmtId = $pdo->prepare("
-            SELECT id_number FROM register
-            WHERE id_number LIKE :prefix
-            ORDER BY id_number DESC
-            LIMIT 1
+            SELECT id_number FROM register 
+            WHERE id_number LIKE :prefix 
+            ORDER BY id_number DESC LIMIT 1
         ");
         $stmtId->execute([':prefix' => $prefix . '%']);
         $lastId = $stmtId->fetchColumn();
+
         $num = $lastId ? intval(substr($lastId, 4)) + 1 : 1;
         $id_number = $prefix . str_pad($num, 4, '0', STR_PAD_LEFT);
 
-        // ================================
-        // 5️⃣ MAP OFFICIAL DATA FROM enrolled_students
-        // ================================
-        $full_name = $enrolled['full_name'];
-        $grade     = $enrolled['grade'];
-        $strand    = $enrolled['strand'];
-        $course    = $enrolled['course'];
+        // ===== CHECK IF LRN OR ID ALREADY REGISTERED =====
+        $check = $pdo->prepare("
+            SELECT COUNT(*) FROM register 
+            WHERE lrn=:lrn OR id_number=:id_number
+        ");
+        $check->execute([':lrn'=>$lrn, ':id_number'=>$id_number]);
+        if ($check->fetchColumn() > 0) {
+            send_json(['success'=>false,'msg'=>'This LRN is already registered.']);
+        }
 
-        // ================================
-        // 6️⃣ INSERT INTO REGISTER
-        // ================================
+        // ===== INSERT INTO register =====
         $stmt = $pdo->prepare("
             INSERT INTO register
-            (lrn, full_name, id_number,
-             grade, strand, course,
-             home_address, guardian_name,
-             guardian_contact, photo_blob, created_at)
+            (lrn, full_name, id_number, grade, strand, course, home_address, guardian_name, guardian_contact, photo, photo_blob, created_at)
             VALUES
-            (:lrn, :full_name, :id_number,
-             :grade, :strand, :course,
-             :home_address, :guardian_name,
-             :guardian_contact, :photo_blob, NOW())
+            (:lrn, :full_name, :id_number, :grade, :strand, :course, :home_address, :guardian_name, :guardian_contact, :photo, :photo_blob, NOW())
         ");
 
-        $stmt->bindParam(':lrn', $lrn);
-        $stmt->bindParam(':full_name', $full_name);
-        $stmt->bindParam(':id_number', $id_number);
-        $stmt->bindParam(':grade', $grade);
-        $stmt->bindParam(':strand', $strand);
-        $stmt->bindParam(':course', $course);
-        $stmt->bindParam(':home_address', $home_address);
-        $stmt->bindParam(':guardian_name', $guardian_name);
-        $stmt->bindParam(':guardian_contact', $guardian_contact);
-        $stmt->bindParam(':photo_blob', $image_binary, PDO::PARAM_LOB);
+        $grade = $level === 'junior' ? $strand : null;
+        $course = $level === 'college' ? $strand : null;
+        $strand_val = $level === 'senior' ? $strand : null;
 
-        $stmt->execute();
+        $stmt->execute([
+            ':lrn' => $lrn,
+            ':full_name' => $full_name,
+            ':id_number' => $id_number,
+            ':grade' => $grade,
+            ':strand' => $strand_val,
+            ':course' => $course,
+            ':home_address' => $home_address,
+            ':guardian_name' => $guardian_name,
+            ':guardian_contact' => $guardian_contact,
+            ':photo' => $photo_filename,
+            ':photo_blob' => $photo_base64
+        ]);
 
         send_json([
-            'success'=>true,
-            'msg'=>'Successfully Registered!',
-            'id_number'=>$id_number
+            'success' => true,
+            'msg' => 'Successfully Registered!',
+            'photo_base64' => 'data:image/jpeg;base64,' . $photo_base64,
+            'id_number' => $id_number
         ]);
 
     } catch(PDOException $e){
-        send_json([
-            'success'=>false,
-            'msg'=>'Database error.'
-        ]);
+        send_json(['success'=>false,'msg'=>'Database error: '.$e->getMessage()]);
     }
 }
 ?>
