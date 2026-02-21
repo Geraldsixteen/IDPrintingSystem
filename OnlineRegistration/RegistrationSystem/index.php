@@ -32,105 +32,132 @@ function send_json($arr){
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
-    $level = $_POST['level'] ?? ''; // junior, senior, college
+    $level = $_POST['level'] ?? '';
     $lrn = trim($_POST['lrn'] ?? '');
-    $full_name = trim($_POST['full_name'] ?? '');
-    $strand = trim($_POST['strand'] ?? '');
     $home_address = trim($_POST['home_address'] ?? '');
     $guardian_name = trim($_POST['guardian_name'] ?? '');
     $guardian_contact = trim($_POST['guardian_contact'] ?? '');
     $photo_base64 = $_POST['photo_base64'] ?? '';
 
-    if (!$lrn || !$full_name || (!$strand && $level != 'college')) {
-        send_json(['success'=>false,'msg'=>'Please fill in all required fields.']);
+    if (!$lrn || !$photo_base64) {
+        send_json(['success'=>false,'msg'=>'Missing required fields.']);
     }
-
-    if (!$photo_base64) {
-        send_json(['success'=>false,'msg'=>'No photo uploaded']);
-    }
-
-    if (preg_match('/^data:image\/\w+;base64,/', $photo_base64)) {
-        $photo_base64 = preg_replace('/^data:image\/\w+;base64,/', '', $photo_base64);
-    }
-
-    $image_data = base64_decode($photo_base64);
-    if (!$image_data) send_json(['success'=>false,'msg'=>'Invalid image data']);
-
-    $photo_filename = $lrn . '_' . time() . '.jpg';
 
     try {
         $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-        // ===== AUTO-GENERATE ID NUMBER =====
-        $currentYear = date('y'); // e.g., '26'
+        // ================================
+        // 1️⃣ CHECK IF STUDENT IS ENROLLED
+        // ================================
+        $stmtEnroll = $pdo->prepare("
+            SELECT * FROM enrolled_students
+            WHERE lrn = :lrn
+            AND status = 'enrolled'
+        ");
+        $stmtEnroll->execute([':lrn' => $lrn]);
+        $enrolled = $stmtEnroll->fetch(PDO::FETCH_ASSOC);
+
+        if (!$enrolled) {
+            // ❌ Stop registration for non-enrolled students
+            send_json([
+                'success' => false,
+                'msg' => 'You are not enrolled and cannot register.'
+            ]);
+        }
+
+        // Prevent level tampering
+        if ($level !== $enrolled['level']) {
+            send_json([
+                'success'=>false,
+                'msg'=>'Level mismatch. Registration denied.'
+            ]);
+        }
+
+        // ================================
+        // 2️⃣ CHECK DUPLICATE REGISTRATION
+        // ================================
+        $check = $pdo->prepare("SELECT 1 FROM register WHERE lrn = :lrn");
+        $check->execute([':lrn'=>$lrn]);
+        if ($check->fetch()) {
+            send_json([
+                'success'=>false,
+                'msg'=>'This LRN is already registered.'
+            ]);
+        }
+
+        // ================================
+        // 3️⃣ PROCESS PHOTO
+        // ================================
+        if (preg_match('/^data:image\/\w+;base64,/', $photo_base64)) {
+            $photo_base64 = preg_replace('/^data:image\/\w+;base64,/', '', $photo_base64);
+        }
+        $image_binary = base64_decode($photo_base64);
+        if (!$image_binary) send_json(['success'=>false,'msg'=>'Invalid image data.']);
+
+        // ================================
+        // 4️⃣ GENERATE ID NUMBER
+        // ================================
+        $currentYear = date('y');
         $prefix = 'S' . $currentYear . '-';
         $stmtId = $pdo->prepare("
-            SELECT id_number FROM (
-                SELECT id_number FROM register WHERE id_number LIKE :prefix
-                UNION ALL
-                SELECT id_number FROM archive  WHERE id_number LIKE :prefix
-            ) AS all_ids
+            SELECT id_number FROM register
+            WHERE id_number LIKE :prefix
             ORDER BY id_number DESC
             LIMIT 1
         ");
         $stmtId->execute([':prefix' => $prefix . '%']);
         $lastId = $stmtId->fetchColumn();
-
-        if ($lastId) {
-            $num = intval(substr($lastId, 4)) + 1;
-        } else {
-            $num = 1;
-        }
+        $num = $lastId ? intval(substr($lastId, 4)) + 1 : 1;
         $id_number = $prefix . str_pad($num, 4, '0', STR_PAD_LEFT);
-        // ====================================
 
-        // Check if LRN exists
-        $check = $pdo->prepare("
-            SELECT COUNT(*) FROM (
-                SELECT lrn,id_number FROM register WHERE lrn=:lrn OR id_number=:id_number
-                UNION ALL
-                SELECT lrn,id_number FROM archive  WHERE lrn=:lrn OR id_number=:id_number
-            ) AS check_all
-        ");
+        // ================================
+        // 5️⃣ MAP OFFICIAL DATA FROM enrolled_students
+        // ================================
+        $full_name = $enrolled['full_name'];
+        $grade     = $enrolled['grade'];
+        $strand    = $enrolled['strand'];
+        $course    = $enrolled['course'];
 
-        $check->execute([':lrn'=>$lrn, ':id_number'=>$id_number]);
-        if ($check->fetchColumn() > 0) send_json(['success'=>false,'msg'=>'This LRN is already registered.']);
-
+        // ================================
+        // 6️⃣ INSERT INTO REGISTER
+        // ================================
         $stmt = $pdo->prepare("
             INSERT INTO register
-            (lrn, full_name, id_number, grade, strand, course, home_address, guardian_name, guardian_contact, photo, photo_blob, created_at)
+            (lrn, full_name, id_number,
+             grade, strand, course,
+             home_address, guardian_name,
+             guardian_contact, photo_blob, created_at)
             VALUES
-            (:lrn, :full_name, :id_number, :grade, :strand, :course, :home_address, :guardian_name, :guardian_contact, :photo, :photo_blob, NOW())
+            (:lrn, :full_name, :id_number,
+             :grade, :strand, :course,
+             :home_address, :guardian_name,
+             :guardian_contact, :photo_blob, NOW())
         ");
 
-        // Map level to fields
-        $grade = $level === 'junior' ? $strand : null;
-        $course = $level === 'college' ? $strand : null;
-        $strand_val = $level === 'senior' ? $strand : null;
+        $stmt->bindParam(':lrn', $lrn);
+        $stmt->bindParam(':full_name', $full_name);
+        $stmt->bindParam(':id_number', $id_number);
+        $stmt->bindParam(':grade', $grade);
+        $stmt->bindParam(':strand', $strand);
+        $stmt->bindParam(':course', $course);
+        $stmt->bindParam(':home_address', $home_address);
+        $stmt->bindParam(':guardian_name', $guardian_name);
+        $stmt->bindParam(':guardian_contact', $guardian_contact);
+        $stmt->bindParam(':photo_blob', $image_binary, PDO::PARAM_LOB);
 
-        $stmt->execute([
-            ':lrn' => $lrn,
-            ':full_name' => $full_name,
-            ':id_number' => $id_number,
-            ':grade' => $grade,
-            ':strand' => $strand_val,
-            ':course' => $course,
-            ':home_address' => $home_address,
-            ':guardian_name' => $guardian_name,
-            ':guardian_contact' => $guardian_contact,
-            ':photo' => $photo_filename,
-            ':photo_blob' => $photo_base64
-        ]);
+        $stmt->execute();
 
         send_json([
-            'success' => true,
-            'msg' => 'Successfully Registered!',
-            'photo_base64' => 'data:image/jpeg;base64,' . $photo_base64,
-            'id_number' => $id_number
+            'success'=>true,
+            'msg'=>'Successfully Registered!',
+            'id_number'=>$id_number
         ]);
 
     } catch(PDOException $e){
-        send_json(['success'=>false,'msg'=>'Database error: '.$e->getMessage()]);
+        send_json([
+            'success'=>false,
+            'msg'=>'Database error.'
+        ]);
     }
 }
 ?>
@@ -364,6 +391,52 @@ document.querySelectorAll('.reg-form-inner').forEach(form => {
         } else alert(data.msg);
     } catch(err){alert('Submit failed: '+err.message);}
 });
+});
+
+// =====================
+// Real-time LRN Enrollment Check
+// =====================
+document.querySelectorAll('.reg-form-inner').forEach(form => {
+    const lrnInput = form.querySelector('input[name="lrn"]');
+    const level = form.dataset.level;
+
+    // Create a feedback message element
+    const feedback = document.createElement('div');
+    feedback.style.color = 'red';
+    feedback.style.fontSize = '12px';
+    feedback.style.marginTop = '4px';
+    lrnInput.parentNode.appendChild(feedback);
+
+    let timer;
+    lrnInput.addEventListener('input', () => {
+        feedback.textContent = '';
+        clearTimeout(timer);
+        const lrn = lrnInput.value.trim();
+        if (!lrn) return;
+
+        // Wait 500ms before sending request to avoid spamming server
+        timer = setTimeout(async () => {
+            try {
+                const res = await fetch(`check_enrolled.php?lrn=${encodeURIComponent(lrn)}&level=${level}`);
+                const data = await res.json();
+                if (!data.success) {
+                    feedback.textContent = '⚠ ' + data.msg; // show warning
+                } else {
+                    feedback.textContent = ''; // clear warning if enrolled
+                }
+            } catch (err) {
+                feedback.textContent = '⚠ Error checking enrollment';
+            }
+        }, 500);
+    });
+
+    // Prevent form submission if not enrolled
+    form.addEventListener('submit', e => {
+        if (feedback.textContent.includes('⚠')) {
+            e.preventDefault();
+            alert('Cannot register: ' + feedback.textContent.replace('⚠ ', ''));
+        }
+    });
 });
 </script>
 </body>
