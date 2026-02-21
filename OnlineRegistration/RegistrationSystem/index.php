@@ -30,20 +30,10 @@ function send_json($arr){
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $level = $_POST['level'] ?? ''; // junior, senior, college
     $lrn = trim($_POST['lrn'] ?? '');
-    $full_name = trim($_POST['full_name'] ?? '');
-    $strand = trim($_POST['strand'] ?? '');
-    $home_address = trim($_POST['home_address'] ?? '');
-    $guardian_name = trim($_POST['guardian_name'] ?? '');
-    $guardian_contact = trim($_POST['guardian_contact'] ?? '');
     $photo_base64 = $_POST['photo_base64'] ?? '';
 
-    if (!$lrn || !$full_name || (!$strand && $level != 'college')) {
-        send_json(['success'=>false,'msg'=>'Please fill in all required fields.']);
-    }
-
-    if (!$photo_base64) {
-        send_json(['success'=>false,'msg'=>'No photo uploaded']);
-    }
+    if (!$lrn) send_json(['success'=>false,'msg'=>'LRN is required.']);
+    if (!$photo_base64) send_json(['success'=>false,'msg'=>'No photo uploaded']);
 
     if (preg_match('/^data:image\/\w+;base64,/', $photo_base64)) {
         $photo_base64 = preg_replace('/^data:image\/\w+;base64,/', '', $photo_base64);
@@ -57,16 +47,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-        // ===== CHECK IF STUDENT EXISTS IN enrolled_students =====
+        // ===== SERVER-SIDE ENROLLMENT VALIDATION =====
         $stmtCheck = $pdo->prepare("
-            SELECT * FROM enrolled_students 
-            WHERE lrn=:lrn
+            SELECT * FROM enrolled_students
+            WHERE lrn = :lrn AND status = 'enrolled'
+            LIMIT 1
         ");
-        $stmtCheck->execute([':lrn'=>$lrn]);
+        $stmtCheck->execute([':lrn' => $lrn]);
         $enrolled = $stmtCheck->fetch(PDO::FETCH_ASSOC);
 
         if (!$enrolled) {
             send_json(['success'=>false,'msg'=>"You are not enrolled in the system."]);
+        }
+
+        // ===== VALIDATE LEVEL VS STRAND/COURSE =====
+        $level_map = [
+            'junior' => ['Grade 7','Grade 8','Grade 9','Grade 10'],
+            'senior' => ['STEM','HUMMS','ABM','GAS','ICT'],
+            'college'=> ['BSBA','BSE','BEE','BSCS','BAE']
+        ];
+
+        $allowed_strands = $level_map[$level] ?? [];
+        $studentStrand = $enrolled['strand'] ?? '';
+
+        if (!in_array($studentStrand, $allowed_strands)) {
+            send_json(['success'=>false,'msg'=>"Level mismatch with enrolled record."]);
         }
 
         // ===== AUTO-GENERATE ID NUMBER =====
@@ -79,7 +84,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         ");
         $stmtId->execute([':prefix' => $prefix . '%']);
         $lastId = $stmtId->fetchColumn();
-
         $num = $lastId ? intval(substr($lastId, 4)) + 1 : 1;
         $id_number = $prefix . str_pad($num, 4, '0', STR_PAD_LEFT);
 
@@ -101,9 +105,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             (:lrn, :full_name, :id_number, :grade, :strand, :course, :home_address, :guardian_name, :guardian_contact, :photo, :photo_blob, NOW())
         ");
 
-        $grade = $level === 'junior' ? $strand : null;
-        $course = $level === 'college' ? $strand : null;
-        $strand_val = $level === 'senior' ? $strand : null;
+        // Override submitted fields with verified enrollment data
+        $full_name = $enrolled['full_name'];
+        $home_address = $enrolled['home_address'] ?? '';
+        $guardian_name = $enrolled['guardian_name'] ?? '';
+        $guardian_contact = $enrolled['guardian_contact'] ?? '';
+
+        $grade = $level === 'junior' ? $studentStrand : null;
+        $strand_val = $level === 'senior' ? $studentStrand : null;
+        $course = $level === 'college' ? $studentStrand : null;
 
         $stmt->execute([
             ':lrn' => $lrn,
@@ -363,50 +373,39 @@ document.querySelectorAll('.reg-form-inner').forEach(form => {
 });
 });
 
-// =====================
-// Real-time LRN Enrollment Check
-// =====================
-document.querySelectorAll('.reg-form-inner').forEach(form => {
-    const lrnInput = form.querySelector('input[name="lrn"]');
-    const level = form.dataset.level;
+lrnInput.addEventListener('input', () => {
+    feedback.textContent = '';
+    clearTimeout(timer);
+    const lrn = lrnInput.value.trim();
+    if (!lrn) return;
 
-    // Create a feedback message element
-    const feedback = document.createElement('div');
-    feedback.style.color = 'red';
-    feedback.style.fontSize = '12px';
-    feedback.style.marginTop = '4px';
-    lrnInput.parentNode.appendChild(feedback);
+    timer = setTimeout(async () => {
+        try {
+            const res = await fetch(`enrolledStudents.php?lrn=${encodeURIComponent(lrn)}&level=${level}`);
+            const data = await res.json();
 
-    let timer;
-    lrnInput.addEventListener('input', () => {
-        feedback.textContent = '';
-        clearTimeout(timer);
-        const lrn = lrnInput.value.trim();
-        if (!lrn) return;
-
-        // Wait 500ms before sending request to avoid spamming server
-        timer = setTimeout(async () => {
-            try {
-                const res = await fetch(`check_enrolled.php?lrn=${encodeURIComponent(lrn)}&level=${level}`);
-                const data = await res.json();
-                if (!data.success) {
-                    feedback.textContent = '⚠ ' + data.msg; // show warning
-                } else {
-                    feedback.textContent = ''; // clear warning if enrolled
-                }
-            } catch (err) {
-                feedback.textContent = '⚠ Error checking enrollment';
+            if (!data.success) {
+                feedback.textContent = '⚠ ' + data.msg;
+                // Clear autofilled fields
+                form.querySelector('input[name="full_name"]').value = '';
+                form.querySelector('select[name="strand"]').value = '';
+                form.querySelector('input[name="home_address"]').value = '';
+                form.querySelector('input[name="guardian_name"]').value = '';
+                form.querySelector('input[name="guardian_contact"]').value = '';
+            } else {
+                feedback.textContent = '✔ ' + data.msg; // show enrolled
+                const d = data.data;
+                // Autofill form fields
+                form.querySelector('input[name="full_name"]').value = d.full_name;
+                form.querySelector('select[name="strand"]').value = d.strand;
+                form.querySelector('input[name="home_address"]').value = d.home_address;
+                form.querySelector('input[name="guardian_name"]').value = d.guardian_name;
+                form.querySelector('input[name="guardian_contact"]').value = d.guardian_contact;
             }
-        }, 500);
-    });
-
-    // Prevent form submission if not enrolled
-    form.addEventListener('submit', e => {
-        if (feedback.textContent.includes('⚠')) {
-            e.preventDefault();
-            alert('Cannot register: ' + feedback.textContent.replace('⚠ ', ''));
+        } catch (err) {
+            feedback.textContent = '⚠ Error checking enrollment';
         }
-    });
+    }, 500);
 });
 </script>
 </body>
