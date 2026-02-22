@@ -291,14 +291,16 @@ body{margin:0;font-family:"Segoe UI",Arial,sans-serif;background:#f0f4ff;display
 const tabs = document.querySelectorAll('.tab-btn');
 const forms = document.querySelectorAll('.reg-form');
 
+// Store registered LRNs with the tab/level they were registered in
+const registeredLRNs = new Map();
+
 tabs.forEach(tab => {
     tab.addEventListener('click', () => {
         tabs.forEach(t => t.classList.remove('active'));
         forms.forEach(f => f.classList.remove('active'));
 
         tab.classList.add('active');
-        document.getElementById(tab.dataset.target + 'Form')
-            .classList.add('active');
+        document.getElementById(tab.dataset.target + 'Form').classList.add('active');
     });
 });
 
@@ -318,37 +320,24 @@ document.querySelectorAll('.reg-form-inner').forEach(form => {
     let timer = null;
 
     preview.src = '';
+    preview.style.display = 'none';
 
     // ===== PHOTO RESIZE + PREVIEW =====
     photoInput.addEventListener('change', e => {
-
         const file = e.target.files[0];
-        if (!file) {
-            preview.src = '';
-            preview.style.display = 'none';
-            resizedPhotoBase64 = '';
-            return;
-        }
+        if (!file) { resetPhoto(); return; }
 
         const reader = new FileReader();
         reader.onload = ev => {
             const img = new Image();
             img.onload = () => {
-
                 const maxWidth = 800;
                 const maxHeight = 1000;
                 let w = img.width;
                 let h = img.height;
 
-                if (w > maxWidth) {
-                    h *= maxWidth / w;
-                    w = maxWidth;
-                }
-
-                if (h > maxHeight) {
-                    w *= maxHeight / h;
-                    h = maxHeight;
-                }
+                if (w > maxWidth) { h *= maxWidth / w; w = maxWidth; }
+                if (h > maxHeight) { w *= maxHeight / h; h = maxHeight; }
 
                 const canvas = document.createElement('canvas');
                 canvas.width = w;
@@ -361,18 +350,28 @@ document.querySelectorAll('.reg-form-inner').forEach(form => {
             };
             img.src = ev.target.result;
         };
-
         reader.readAsDataURL(file);
     });
 
+    function resetPhoto() {
+        preview.src = '';
+        preview.style.display = 'none';
+        resizedPhotoBase64 = '';
+        photoInput.value = '';
+    }
+
     // ===== REALTIME LRN CHECK =====
     lrnInput.addEventListener('input', () => {
-
         clearTimeout(timer);
-
         const lrn = lrnInput.value.trim();
-        if (!lrn) {
-            statusDiv.innerHTML = '';
+
+        if (!lrn) { clearStatus(); return; }
+
+        // Check if already registered in this session
+        if (registeredLRNs.has(lrn)) {
+            const regLevel = registeredLRNs.get(lrn);
+            setStatus(`This student is already registered under "${capitalize(regLevel)}" tab.`, 'error');
+            highlightTab(regLevel);
             return;
         }
 
@@ -380,39 +379,20 @@ document.querySelectorAll('.reg-form-inner').forEach(form => {
         statusDiv.className = 'enrollment-status status-checking';
 
         timer = setTimeout(async () => {
-
-            if (lrn.length < 6) {
-                statusDiv.innerHTML = 'Enter valid LRN';
-                statusDiv.className = 'enrollment-status status-error';
-                return;
-            }
+            if (lrn.length < 6) { setStatus('Enter valid LRN', 'error'); return; }
 
             try {
-
                 const res = await fetch(
                     `checkEnrolled.php?lrn=${encodeURIComponent(lrn)}&full_name=${encodeURIComponent(form.querySelector('input[name="full_name"]').value)}&level=${form.dataset.level}`
                 );
-
                 const data = await res.json();
 
                 if (!data.success) {
-
-                    statusDiv.innerHTML = data.msg;
-                    statusDiv.className = 'enrollment-status status-error';
-
-                    editableInputs.forEach(i => {
-                        i.value = '';
-                        i.readOnly = false;
-                        i.disabled = false;
-                    });
-
+                    setStatus(data.msg, 'error');
+                    resetEditableInputs();
                 } else {
-
-                    statusDiv.innerHTML = '✔ Student is officially enrolled';
-                    statusDiv.className = 'enrollment-status status-success';
-
+                    setStatus('✔ Student is officially enrolled', 'success');
                     const d = data.data;
-
                     editableInputs.forEach(i => {
                         if (i.name in d) {
                             i.value = d[i.name] || '';
@@ -421,31 +401,58 @@ document.querySelectorAll('.reg-form-inner').forEach(form => {
                         }
                     });
                 }
-
             } catch (err) {
                 console.error(err);
-                statusDiv.innerHTML = 'Server error';
-                statusDiv.className = 'enrollment-status status-error';
+                setStatus('Server error', 'error');
             }
-
         }, 400);
     });
 
+    function setStatus(msg, type) {
+        statusDiv.innerHTML = msg;
+        statusDiv.className = `enrollment-status status-${type}`;
+    }
+
+    function clearStatus() {
+        statusDiv.innerHTML = '';
+        statusDiv.className = 'enrollment-status';
+    }
+
+    function resetEditableInputs() {
+        editableInputs.forEach(i => {
+            i.value = '';
+            i.readOnly = false;
+            i.disabled = false;
+        });
+    }
+
+    function capitalize(str) {
+        return str.charAt(0).toUpperCase() + str.slice(1);
+    }
+
+    function highlightTab(level) {
+        tabs.forEach(t => t.classList.remove('active'));
+        forms.forEach(f => f.classList.remove('active'));
+
+        const tab = document.querySelector(`.tab-btn[data-target="${level}"]`);
+        const formToShow = document.getElementById(level + 'Form');
+        if (tab && formToShow) {
+            tab.classList.add('active');
+            formToShow.classList.add('active');
+        }
+    }
+
     // ===== FORM SUBMIT =====
     form.addEventListener('submit', async e => {
-
         e.preventDefault();
 
-        if (!resizedPhotoBase64) {
-            statusDiv.innerHTML = 'Please select a photo.';
-            statusDiv.className = 'enrollment-status status-error';
-            return;
-        }
-
-        if (!statusDiv.classList.contains('status-success')) {
-            statusDiv.innerHTML = 'Student must be enrolled before registering.';
-            statusDiv.className = 'enrollment-status status-error';
-            return;
+        const lrn = lrnInput.value.trim();
+        if (!resizedPhotoBase64) { setStatus('Please select a photo.', 'error'); return; }
+        if (!statusDiv.classList.contains('status-success')) { setStatus('Student must be enrolled before registering.', 'error'); return; }
+        if (registeredLRNs.has(lrn)) { 
+            setStatus(`This student is already registered under "${capitalize(registeredLRNs.get(lrn))}" tab.`, 'error'); 
+            highlightTab(registeredLRNs.get(lrn));
+            return; 
         }
 
         submitBtn.disabled = true;
@@ -453,59 +460,39 @@ document.querySelectorAll('.reg-form-inner').forEach(form => {
 
         const fd = new FormData();
         fd.append('level', form.dataset.level);
-
         allInputs.forEach(input => {
-            if (input.name && input.type !== 'file') {
-                fd.append(input.name, input.value);
-            }
+            if (input.name && input.type !== 'file') fd.append(input.name, input.value);
         });
-
         fd.append('photo_base64', resizedPhotoBase64);
 
         try {
-
-            const res = await fetch('index.php', {
-                method: 'POST',
-                body: fd
-            });
-
+            const res = await fetch('index.php', { method: 'POST', body: fd });
             const data = await res.json();
 
             if (data.success) {
-
-                statusDiv.innerHTML =
-                    '✔ Registration Successful! ID: ' + data.id_number;
-                statusDiv.className = 'enrollment-status status-success';
-
+                setStatus(`✔ Registration Successful! ID: ${data.id_number}`, 'success');
                 preview.src = data.photo_base64;
                 preview.style.display = 'block';
 
-                // RESET FORM CLEANLY
-                photoInput.value = '';
-                resizedPhotoBase64 = '';
+                // Mark LRN as registered in this session
+                registeredLRNs.set(lrn, form.dataset.level);
 
-                editableInputs.forEach(i => {
-                    i.readOnly = false;
-                    i.disabled = false;
-                    i.value = '';
+                // ===== RESET FORM CLEANLY =====
+                resetPhoto();
+                resetEditableInputs();
+                allInputs.forEach(input => {
+                    if (input.tagName === 'SELECT') input.selectedIndex = 0;
                 });
-
                 lrnInput.value = '';
 
-                setTimeout(() => {
-                    statusDiv.innerHTML = '';
-                }, 5000);
-
+                setTimeout(clearStatus, 5000);
             } else {
-                statusDiv.innerHTML = data.msg;
-                statusDiv.className = 'enrollment-status status-error';
+                setStatus(data.msg, 'error');
             }
 
         } catch (err) {
             console.error(err);
-            statusDiv.innerHTML =
-                'Submission failed. Please try again.';
-            statusDiv.className = 'enrollment-status status-error';
+            setStatus('Submission failed. Please try again.', 'error');
         }
 
         submitBtn.disabled = false;
