@@ -3,70 +3,63 @@ require_once __DIR__ . '/../Config/database.php';
 header('Content-Type: application/json; charset=utf-8');
 
 $lrn   = trim($_GET['lrn'] ?? '');
-$level = trim($_GET['level'] ?? '');
-$name  = trim($_GET['full_name'] ?? '');
-$value = trim($_GET['value'] ?? ''); // grade/strand/course
+$level = $_GET['level'] ?? '';
 
-if (!$lrn || !$level || !$name || !$value) {
-    echo json_encode(['success'=>false,'msg'=>'Missing required fields.']);
+if (!$lrn || !$level) {
+    echo json_encode(['success'=>false,'msg'=>'Missing LRN or level.']);
     exit;
 }
 
 $stmt = $pdo->prepare("
     SELECT * FROM enrolled_students
-    WHERE lrn = :lrn
+    WHERE lrn = :lrn AND status = 'enrolled'
     LIMIT 1
 ");
-$stmt->execute([':lrn' => $lrn]);
+$stmt->execute([':lrn'=>$lrn]);
 $student = $stmt->fetch(PDO::FETCH_ASSOC);
 
 if (!$student) {
-    echo json_encode(['success'=>false,'msg'=>'You are not enrolled.']);
+    echo json_encode(['success'=>false,'msg'=>'You are not enrolled']);
     exit;
 }
 
-// Check level match
-if ($student['level'] !== $level) {
-    echo json_encode(['success'=>false,'msg'=>'Please check your information (Level mismatch).']);
-    exit;
-}
+$match = false;
 
-// Check name match (case insensitive)
-if (strcasecmp($student['full_name'], $name) !== 0) {
-    echo json_encode(['success'=>false,'msg'=>'Please check your information (Name mismatch).']);
-    exit;
-}
-
-// Determine correct column to compare
-$dbValue = '';
+// ===== LEVEL CHECKING =====
 if ($level === 'junior') {
-    $dbValue = $student['grade'];
+    $allowed = ['Grade 7','Grade 8','Grade 9','Grade 10'];
+    if (!empty($student['grade']) && in_array($student['grade'], $allowed)) {
+        $match = true;
+    }
+
 } elseif ($level === 'senior') {
-    $dbValue = $student['strand'];
+    $allowed = ['STEM','HUMMS','ABM','GAS','ICT'];
+    if (!empty($student['strand']) && in_array($student['strand'], $allowed)) {
+        $match = true;
+    }
+
 } elseif ($level === 'college') {
-    $dbValue = $student['course'];
+    $allowed = ['BSBA','BSE','BEE','BSCS','BAE'];
+    if (!empty($student['course']) && in_array($student['course'], $allowed)) {
+        $match = true;
+    }
 }
 
-// Check grade/strand/course match
-if ($dbValue !== $value) {
-    echo json_encode(['success'=>false,'msg'=>'Please check your information (Program mismatch).']);
+if (!$match) {
+    echo json_encode(['success'=>false,'msg'=>'Please check your level selection']);
     exit;
 }
 
-// Check status
-if ($student['status'] !== 'enrolled') {
-    echo json_encode(['success'=>false,'msg'=>'You are not enrolled.']);
-    exit;
-}
-
-// SUCCESS
 echo json_encode([
-    'success' => true,
-    'msg' => 'You are enrolled',
-    'data' => [
-        'full_name' => $student['full_name'],
-        'home_address' => $student['home_address'] ?? '',
-        'guardian_name' => $student['guardian_name'] ?? '',
-        'guardian_contact' => $student['guardian_contact'] ?? ''
+    'success'=>true,
+    'msg'=>'You are enrolled',
+    'data'=>[
+        'full_name'=>$student['full_name'],
+        'grade'=>$student['grade'] ?? '',
+        'strand'=>$student['strand'] ?? '',
+        'course'=>$student['course'] ?? '',
+        'home_address'=>$student['home_address'] ?? '',
+        'guardian_name'=>$student['guardian_name'] ?? '',
+        'guardian_contact'=>$student['guardian_contact'] ?? ''
     ]
 ]);
