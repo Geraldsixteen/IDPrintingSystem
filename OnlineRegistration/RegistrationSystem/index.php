@@ -148,7 +148,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Student Registration</title>
 <style>
-/* ... keep your existing CSS ... */
 .photoPreview {
     display: block;
     margin: 10px auto;
@@ -192,7 +191,6 @@ body{margin:0;font-family:"Segoe UI",Arial,sans-serif;background:#f0f4ff;display
 .tab-btn.active{background-color:#002b80;}
 .reg-form{display:none;}
 .reg-form.active{display:block;}
-</style>
 </style>
 </head>
 <body>
@@ -301,111 +299,120 @@ tabs.forEach(tab => {
     });
 });
 
+// Handle each registration form
 document.querySelectorAll('.reg-form-inner').forEach(form => {
     const photoInput = form.querySelector('.photoInput');
     const preview = form.querySelector('.photoPreview');
+    const lrnInput = form.querySelector('input[name="lrn"]');
+
     let resizedPhotoBase64 = '';
+    let timer;
 
     preview.src = '';
 
+    // ===== Photo resize & preview =====
     photoInput.addEventListener('change', e => {
-    const file = e.target.files[0];
-    if(!file){
-        preview.src='';
-        preview.style.display = 'none'; // hide if no file
-        return;
-    }
-    const reader = new FileReader();
-    reader.onload = function(ev){
-        const img = new Image();
-        img.onload = function(){
-            const maxWidth = 800, maxHeight = 1000;
-            let w=img.width,h=img.height;
-            if(w>maxWidth){h=h*(maxWidth/w);w=maxWidth;}
-            if(h>maxHeight){w=w*(maxHeight/h);h=maxHeight;}
-            const canvas=document.createElement('canvas');
-            canvas.width=w; canvas.height=h;
-            canvas.getContext('2d').drawImage(img,0,0,w,h);
-            resizedPhotoBase64 = canvas.toDataURL('image/jpeg',0.85);
-            preview.src = resizedPhotoBase64;
-            preview.style.display = 'block'; // show after selection
-        }
-        img.src = ev.target.result;
-    }
-    reader.readAsDataURL(file);
-});
-
-
-    form.addEventListener('submit', async e => {
-    e.preventDefault();
-    if(!resizedPhotoBase64){alert('Please select a photo'); return;}
-    const fd = new FormData();
-    fd.append('level', form.dataset.level);
-    for(let input of form.elements){
-        if(input.name && input.type!=='file') fd.append(input.name,input.value);
-    }
-    fd.append('photo_base64',resizedPhotoBase64);
-    try{
-        const res = await fetch('index.php',{method:'POST',body:fd});
-        const data = await res.json();
-        if(data.success){
-            const p=document.getElementById('popupMsg');
-            p.innerHTML='✔ '+data.msg+'<br>ID Number: '+data.id_number;
-            p.style.display='block';
-            setTimeout(()=>p.style.display='none',2500);
-
-            // Show the uploaded photo in preview (optional)
-            preview.src = data.photo_base64;
-            preview.style.display = 'block';
-
-            // Reset form fields
-            form.querySelectorAll('input:not([type=file]), select').forEach(i=>i.value='');
-            resizedPhotoBase64 = '';
-
-            // Reset file input
-            photoInput.value = '';
-            // Hide preview again
-            preview.src = '';
+        const file = e.target.files[0];
+        if(!file){
+            preview.src='';
             preview.style.display = 'none';
+            return;
+        }
+        const reader = new FileReader();
+        reader.onload = function(ev){
+            const img = new Image();
+            img.onload = function(){
+                const maxWidth = 800, maxHeight = 1000;
+                let w = img.width, h = img.height;
+                if(w>maxWidth){h=h*(maxWidth/w); w=maxWidth;}
+                if(h>maxHeight){w=w*(maxHeight/h); h=maxHeight;}
+                const canvas = document.createElement('canvas');
+                canvas.width = w; canvas.height = h;
+                canvas.getContext('2d').drawImage(img,0,0,w,h);
+                resizedPhotoBase64 = canvas.toDataURL('image/jpeg',0.85);
+                preview.src = resizedPhotoBase64;
+                preview.style.display = 'block';
+            }
+            img.src = ev.target.result;
+        }
+        reader.readAsDataURL(file);
+    });
 
-        } else alert(data.msg);
-    } catch(err){alert('Submit failed: '+err.message);}
-});
-});
+    // ===== LRN input: fetch enrolled student info =====
+    lrnInput.addEventListener('input', () => {
+        clearTimeout(timer);
+        const lrn = lrnInput.value.trim();
+        if (!lrn) return;
 
-lrnInput.addEventListener('input', () => {
-    feedback.textContent = '';
-    clearTimeout(timer);
-    const lrn = lrnInput.value.trim();
-    if (!lrn) return;
+        timer = setTimeout(async () => {
+            try {
+                const res = await fetch(`enrolledStudents.php?lrn=${encodeURIComponent(lrn)}&level=${form.dataset.level}`);
+                const data = await res.json();
 
-    timer = setTimeout(async () => {
+                // Select all input/select fields except LRN and file
+                const inputs = Array.from(form.querySelectorAll('input, select'))
+                    .filter(i => i.name !== 'lrn' && i.type !== 'file');
+
+                if (!data.success) {
+                    // Clear autofilled fields
+                    inputs.forEach(i => { i.value=''; i.readOnly=false; i.disabled=false; });
+                    alert('⚠ ' + data.msg);
+                } else {
+                    const d = data.data;
+
+                    // Autofill and lock fields
+                    inputs.forEach(i => {
+                        if(i.name in d){
+                            i.value = d[i.name] || '';
+                            i.readOnly = true;      // prevent editing
+                            i.disabled = i.tagName==='SELECT'; // disable select dropdown
+                        }
+                    });
+                }
+            } catch (err) {
+                console.error('Error checking enrollment:', err);
+            }
+        }, 500);
+    });
+
+    // ===== Form submission =====
+    form.addEventListener('submit', async e => {
+        e.preventDefault();
+        if(!resizedPhotoBase64){alert('Please select a photo'); return;}
+        const fd = new FormData();
+        fd.append('level', form.dataset.level);
+        for(let input of form.elements){
+            if(input.name && input.type!=='file') fd.append(input.name,input.value);
+        }
+        fd.append('photo_base64',resizedPhotoBase64);
+
         try {
-            const res = await fetch(`enrolledStudents.php?lrn=${encodeURIComponent(lrn)}&level=${level}`);
+            const res = await fetch('index.php',{method:'POST',body:fd});
             const data = await res.json();
 
-            if (!data.success) {
-                feedback.textContent = '⚠ ' + data.msg;
-                // Clear autofilled fields
-                form.querySelector('input[name="full_name"]').value = '';
-                form.querySelector('select[name="strand"]').value = '';
-                form.querySelector('input[name="home_address"]').value = '';
-                form.querySelector('input[name="guardian_name"]').value = '';
-                form.querySelector('input[name="guardian_contact"]').value = '';
-            } else {
-                feedback.textContent = '✔ ' + data.msg; // show enrolled
-                const d = data.data;
-                // Autofill form fields
-                form.querySelector('input[name="full_name"]').value = d.full_name;
-                form.querySelector('select[name="strand"]').value = d.strand;
-                form.querySelector('input[name="home_address"]').value = d.home_address;
-                form.querySelector('input[name="guardian_name"]').value = d.guardian_name;
-                form.querySelector('input[name="guardian_contact"]').value = d.guardian_contact;
-            }
-        } catch (err) {
-            feedback.textContent = '⚠ Error checking enrollment';
+            if(data.success){
+                const p=document.getElementById('popupMsg');
+                p.innerHTML='✔ '+data.msg+'<br>ID Number: '+data.id_number;
+                p.style.display='block';
+                setTimeout(()=>p.style.display='none',2500);
+
+                // Show uploaded photo in preview
+                preview.src = data.photo_base64;
+                preview.style.display = 'block';
+
+                // Reset file input & preview
+                photoInput.value = '';
+                resizedPhotoBase64 = '';
+
+                // Unlock input fields for next entry
+                Array.from(form.querySelectorAll('input, select'))
+                    .forEach(i => { i.readOnly=false; i.disabled=false; i.value=''; });
+            } else alert(data.msg);
+
+        } catch(err){
+            alert('Submit failed: '+err.message);
         }
-    }, 500);
+    });
 });
 </script>
 </body>
