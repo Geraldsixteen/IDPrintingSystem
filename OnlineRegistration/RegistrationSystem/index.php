@@ -256,24 +256,64 @@ document.querySelectorAll('.reg-form-inner').forEach(form=>{
   function highlightTab(level){tabs.forEach(t=>t.classList.remove('active'));formsEl.forEach(f=>f.classList.remove('active'));const t=document.querySelector(`.tab-btn[data-target="${level}"]`);const f=document.getElementById(level+'Form');if(t&&f){t.classList.add('active');f.classList.add('active');}}
 
   // ===== LRN CHECK =====
-  lrnInput.addEventListener('input',()=>{
+lrnInput.addEventListener('input',()=>{
     clearTimeout(timer);
-    const lrn=lrnInput.value.trim();
-    if(!lrn){clearStatus(); return;}
-    if(registeredLRNs.has(lrn)){setStatus(`This student is already registered under "${capitalize(registeredLRNs.get(lrn))}" tab.`,'error');highlightTab(registeredLRNs.get(lrn));return;}
-    statusDiv.innerHTML='Checking enrollment...';statusDiv.className='enrollment-status status-checking';
+
+    const lrn = lrnInput.value.trim();
+    const fullName = form.querySelector('input[name="full_name"]').value.trim();
+
+    if(!lrn || !fullName){
+        clearStatus();
+        return;
+    }
+
+    statusDiv.innerHTML='Checking enrollment...';
+    statusDiv.className='enrollment-status status-checking';
+
     timer=setTimeout(async()=>{
-      if(lrn.length<6){setStatus('Enter valid LRN','error');return;}
-      try{
-        const levelFieldMap={junior:'grade',senior:'strand',college:'course'};
-        const fieldName=levelFieldMap[form.dataset.level];
-        const fieldValue=form.querySelector(`select[name="${fieldName}"]`)?.value||'';
-        const res=await fetch(`checkEnrolled.php?lrn=${encodeURIComponent(lrn)}&full_name=${encodeURIComponent(form.querySelector('input[name="full_name"]').value)}&level=${form.dataset.level}&${fieldName}=${encodeURIComponent(fieldValue)}`);
-        const data=await res.json();
-        if(!data.success){setStatus(data.msg,'error');resetEditableInputs();}else{setStatus('✔ Student is officially enrolled','success');const d=data.data;editableInputs.forEach(i=>{if(i.name in d){i.value=d[i.name]||'';i.readOnly=true;if(i.tagName==='SELECT')i.disabled=true;}});}
-      }catch(err){console.error(err);setStatus('Server error','error');}
+        if(lrn.length<6){
+            setStatus('Enter valid LRN','error');
+            return;
+        }
+
+        try{
+            const levelFieldMap={junior:'grade',senior:'strand',college:'course'};
+            const fieldName=levelFieldMap[form.dataset.level];
+            const fieldValue=form.querySelector(`select[name="${fieldName}"]`)?.value||'';
+
+            const res=await fetch(
+                `checkEnrolled.php?lrn=${encodeURIComponent(lrn)}&full_name=${encodeURIComponent(fullName)}&level=${form.dataset.level}&${fieldName}=${encodeURIComponent(fieldValue)}`
+            );
+
+            const data=await res.json();
+
+            if(!data.success){
+                setStatus(data.msg,'error');
+                resetEditableInputs();
+            }else{
+                setStatus('✔ Student is officially enrolled','success');
+
+                const d=data.data;
+
+                editableInputs.forEach(i=>{
+                    if(i.name in d && d[i.name]){
+                        i.value = d[i.name];
+                        i.readOnly = true;
+                        if(i.tagName==='SELECT') i.disabled = true;
+                    }else{
+                        i.readOnly = false;
+                        if(i.tagName==='SELECT') i.disabled = false;
+                    }
+                });
+            }
+
+        }catch(err){
+            console.error(err);
+            setStatus('Server error','error');
+        }
+
     },400);
-  });
+});
 
   // ===== FORM SUBMIT =====
   form.addEventListener('submit',async e=>{
