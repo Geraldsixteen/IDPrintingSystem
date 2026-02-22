@@ -210,6 +210,25 @@ body{margin:0;font-family:"Segoe UI",Arial,sans-serif;background:#f0f4ff;display
 .card button:hover{background:#1f2857}
 #popupMsg{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#28a745;color:white;padding:20px;border-radius:12px;font-weight:600;display:none;text-align:center;min-width:220px;max-width:90%;}
 
+.statusMsg{
+    margin-top:8px;
+    padding:8px;
+    border-radius:8px;
+    font-weight:600;
+    font-size:14px;
+    display:none;
+}
+
+.status-success{
+    background:#e6f9ed;
+    color:#1e7e34;
+}
+
+.status-error{
+    background:#ffe6e6;
+    color:#b30000;
+}
+
 .photoPreview {
     display: none; /* hide by default */
     margin: 10px auto;
@@ -245,10 +264,13 @@ body{margin:0;font-family:"Segoe UI",Arial,sans-serif;background:#f0f4ff;display
 <div class="card reg-form active" id="juniorHighForm">
 <h3>Register Junior High Student</h3>
 <form class="reg-form-inner" data-level="junior">
+<div class="statusMsg"></div>
 <div class="form-group"><input type="text" name="lrn" placeholder=" " required><label>LRN</label></div>
+<div class="statusMsg"></div>
 <div class="form-group"><input type="text" name="full_name" placeholder=" " required><label>Full Name</label></div>
 <!-- ID number input removed -->
 <div class="form-group">
+<div class="statusMsg"></div>
 <select name="strand" required>
 <option value="" hidden></option>
 <option value="Grade 7">Grade 7</option>

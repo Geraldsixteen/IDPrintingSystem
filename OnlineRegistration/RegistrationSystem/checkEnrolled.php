@@ -2,20 +2,27 @@
 require_once __DIR__ . '/../Config/database.php';
 header('Content-Type: application/json; charset=utf-8');
 
-$lrn   = trim($_GET['lrn'] ?? '');
-$level = $_GET['level'] ?? '';
+$lrn       = trim($_GET['lrn'] ?? '');
+$full_name = trim($_GET['full_name'] ?? '');
+$level     = $_GET['level'] ?? '';
 
-if (!$lrn || !$level) {
-    echo json_encode(['success'=>false,'msg'=>'Missing LRN or level.']);
+if (!$lrn || !$full_name || !$level) {
+    echo json_encode(['success'=>false,'msg'=>'Incomplete information']);
     exit;
 }
 
 $stmt = $pdo->prepare("
     SELECT * FROM enrolled_students
-    WHERE lrn = :lrn AND status = 'enrolled'
+    WHERE lrn = :lrn 
+      AND LOWER(full_name) = LOWER(:full_name)
+      AND status = 'enrolled'
     LIMIT 1
 ");
-$stmt->execute([':lrn'=>$lrn]);
+$stmt->execute([
+    ':lrn'=>$lrn,
+    ':full_name'=>$full_name
+]);
+
 $student = $stmt->fetch(PDO::FETCH_ASSOC);
 
 if (!$student) {
@@ -25,24 +32,16 @@ if (!$student) {
 
 $match = false;
 
-// ===== LEVEL CHECKING =====
-if ($level === 'junior') {
-    $allowed = ['Grade 7','Grade 8','Grade 9','Grade 10'];
-    if (!empty($student['grade']) && in_array($student['grade'], $allowed)) {
-        $match = true;
-    }
+if ($level === 'junior' && !empty($student['grade'])) {
+    $match = true;
+}
 
-} elseif ($level === 'senior') {
-    $allowed = ['STEM','HUMMS','ABM','GAS','ICT'];
-    if (!empty($student['strand']) && in_array($student['strand'], $allowed)) {
-        $match = true;
-    }
+if ($level === 'senior' && !empty($student['strand'])) {
+    $match = true;
+}
 
-} elseif ($level === 'college') {
-    $allowed = ['BSBA','BSE','BEE','BSCS','BAE'];
-    if (!empty($student['course']) && in_array($student['course'], $allowed)) {
-        $match = true;
-    }
+if ($level === 'college' && !empty($student['course'])) {
+    $match = true;
 }
 
 if (!$match) {
