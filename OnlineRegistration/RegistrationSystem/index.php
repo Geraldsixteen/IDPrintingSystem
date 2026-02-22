@@ -104,19 +104,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             VALUES (:lrn, :full_name, :id_number, :grade, :strand, :course, :home_address, :guardian_name, :guardian_contact, :photo, :photo_blob, NOW())
         ");
 
-        $stmtInsert->execute([
-            ':lrn'              => $lrn,
-            ':full_name'        => $enrolled['full_name'],
-            ':id_number'        => $id_number,
-            ':grade'            => $level==='junior' ? $inputValue : null,
-            ':strand'           => $level==='senior' ? $inputValue : null,
-            ':course'           => $level==='college'? $inputValue : null,
-            ':home_address'     => $home_address,
-            ':guardian_name'    => $guardian_name,
-            ':guardian_contact' => $guardian_contact,
-            ':photo'            => null,
-            ':photo_blob'       => $photo_blob
-        ]);
+        $stmtInsert->bindValue(':lrn', $lrn);
+        $stmtInsert->bindValue(':full_name', $enrolled['full_name']);
+        $stmtInsert->bindValue(':id_number', $id_number);
+        $stmtInsert->bindValue(':grade', $level==='junior' ? $inputValue : null);
+        $stmtInsert->bindValue(':strand', $level==='senior' ? $inputValue : null);
+        $stmtInsert->bindValue(':course', $level==='college'? $inputValue : null);
+        $stmtInsert->bindValue(':home_address', $home_address);
+        $stmtInsert->bindValue(':guardian_name', $guardian_name);
+        $stmtInsert->bindValue(':guardian_contact', $guardian_contact);
+        $stmtInsert->bindValue(':photo', null);
+        $stmtInsert->bindValue(':photo_blob', $photo_blob, PDO::PARAM_LOB);
+
+        $stmtInsert->execute();
 
         $pdo->commit();
 
@@ -302,8 +302,7 @@ document.querySelectorAll('.reg-form-inner').forEach(form=>{
   function capitalize(s){return s.charAt(0).toUpperCase()+s.slice(1);}
   function highlightTab(level){tabs.forEach(t=>t.classList.remove('active'));formsEl.forEach(f=>f.classList.remove('active'));const t=document.querySelector(`.tab-btn[data-target="${level}"]`);const f=document.getElementById(level+'Form');if(t&&f){t.classList.add('active');f.classList.add('active');}}
 
-  // ===== LRN CHECK =====
-lrnInput.addEventListener('input',()=>{
+function checkEnrollment(){
     clearTimeout(timer);
 
     const lrn = lrnInput.value.trim();
@@ -318,11 +317,6 @@ lrnInput.addEventListener('input',()=>{
     statusDiv.className='enrollment-status status-checking';
 
     timer=setTimeout(async()=>{
-        if(lrn.length<6){
-            setStatus('Enter valid LRN','error');
-            return;
-        }
-
         try{
             const levelFieldMap={junior:'grade',senior:'strand',college:'course'};
             const fieldName=levelFieldMap[form.dataset.level];
@@ -339,28 +333,17 @@ lrnInput.addEventListener('input',()=>{
                 resetEditableInputs();
             }else{
                 setStatus('✔ Student is officially enrolled','success');
-
-                const d=data.data;
-
-                editableInputs.forEach(i=>{
-                    if(i.name in d && d[i.name]){
-                        i.value = d[i.name];
-                        i.readOnly = true;
-                        if(i.tagName==='SELECT') i.disabled = true;
-                    }else{
-                        i.readOnly = false;
-                        if(i.tagName==='SELECT') i.disabled = false;
-                    }
-                });
             }
 
         }catch(err){
             console.error(err);
             setStatus('Server error','error');
         }
+    },300);
+}
 
-    },400);
-});
+lrnInput.addEventListener('input', checkEnrollment);
+form.querySelector('input[name="full_name"]').addEventListener('input', checkEnrollment);
 
   // ===== FORM SUBMIT =====
   form.addEventListener('submit',async e=>{
