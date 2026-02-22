@@ -2,6 +2,7 @@
 session_start();
 require_once __DIR__ . '/../Config/database.php';
 
+// ===== UUID GENERATOR =====
 function generate_uuid() {
     return sprintf(
         '%04x%04x-%04x-%04x-%04x-%04x%04x%04x',
@@ -13,13 +14,14 @@ function generate_uuid() {
     );
 }
 
-// Ensure large uploads work
+// ===== PHP CONFIG =====
 ini_set('upload_max_filesize', '10M');
 ini_set('post_max_size', '12M');
 ini_set('max_execution_time', '300');
 ini_set('display_errors', 0);
 error_reporting(E_ALL);
 
+// ===== JSON RESPONSE FUNCTION =====
 function send_json($arr){
     if(ob_get_level()) ob_end_clean();
     header('Content-Type: application/json; charset=utf-8');
@@ -27,153 +29,100 @@ function send_json($arr){
     exit;
 }
 
+// ===== HANDLE POST REGISTRATION =====
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $level = $_POST['level'] ?? ''; // junior, senior, college
+
+    $original_base64 = $_POST['photo_base64'] ?? '';
+    if (!$original_base64) send_json(['success'=>false,'msg'=>'Photo is required.']);
+
+    $clean_base64 = str_replace('data:image/jpeg;base64,', '', $original_base64);
+    $photo_blob = base64_decode($clean_base64);
+    $photo_filename = null; // optional, using blob only
+
+    $level = $_POST['level'] ?? '';
     $lrn = trim($_POST['lrn'] ?? '');
-    $photo_base64 = $_POST['photo_base64'] ?? '';
+    $full_name = trim($_POST['full_name'] ?? '');
 
-    if (!$lrn) send_json(['success'=>false,'msg'=>'LRN is required.']);
-    if (!$photo_base64) send_json(['success'=>false,'msg'=>'No photo uploaded']);
+    // ===== MAP LEVEL INPUT =====
+    $inputValue = '';
+    if ($level === 'junior') $inputValue = trim($_POST['grade'] ?? '');
+    elseif ($level === 'senior') $inputValue = trim($_POST['strand'] ?? '');
+    elseif ($level === 'college') $inputValue = trim($_POST['course'] ?? '');
+    else send_json(['success'=>false,'msg'=>'Invalid level selection.']);
 
-    if (preg_match('/^data:image\/\w+;base64,/', $photo_base64)) {
-        $photo_base64 = preg_replace('/^data:image\/\w+;base64,/', '', $photo_base64);
-    }
+    if (!$lrn || !$full_name || !$inputValue) send_json(['success'=>false,'msg'=>'Incomplete information.']);
 
-    $image_data = base64_decode($photo_base64);
-    if (!$image_data) send_json(['success'=>false,'msg'=>'Invalid image data']);
+    $pdo->beginTransaction();
 
-    $photo_filename = $lrn . '_' . time() . '.jpg';
+    // ===== LOCK ENROLLED STUDENT RECORD =====
+    $stmt = $pdo->prepare("
+        SELECT lrn, full_name, grade, strand, course, status
+        FROM enrolled_students
+        WHERE lrn = :lrn
+        FOR UPDATE
+    ");
+    $stmt->execute([':lrn'=>$lrn]);
+    $enrolled = $stmt->fetch(PDO::FETCH_ASSOC);
 
-    try {
-        $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    if (!$enrolled) { $pdo->rollBack(); send_json(['success'=>false,'msg'=>'You are not enrolled.']); }
+    if ($enrolled['status'] !== 'enrolled') { $pdo->rollBack(); send_json(['success'=>false,'msg'=>'Enrollment inactive.']); }
+    if (trim(strtolower($enrolled['full_name'])) !== trim(strtolower($full_name))) { $pdo->rollBack(); send_json(['success'=>false,'msg'=>'Name does not match record.']); }
 
-        // ===== STRICT SERVER VALIDATION =====
-        $stmtCheck = $pdo->prepare("
-            SELECT * FROM enrolled_students
-            WHERE lrn = :lrn
-            LIMIT 1
-        ");
-        $stmtCheck->execute([':lrn' => $lrn]);
-        $enrolled = $stmtCheck->fetch(PDO::FETCH_ASSOC);
+    // ===== CHECK LEVEL MATCH =====
+    $dbValue = '';
+    if ($level === 'junior') $dbValue = $enrolled['grade'];
+    elseif ($level === 'senior') $dbValue = $enrolled['strand'];
+    elseif ($level === 'college') $dbValue = $enrolled['course'];
 
-        if (!$enrolled) {
-            send_json(['success'=>false,'msg'=>"You are not enrolled."]);
-        }
+    if (!$dbValue || trim($dbValue) !== $inputValue) { $pdo->rollBack(); send_json(['success'=>false,'msg'=>'Grade/Strand/Course mismatch.']); }
 
-        // Check level
-        if ($enrolled['level'] !== $level) {
-            send_json(['success'=>false,'msg'=>"Please check your information."]);
-        }
+    // ===== CHECK DUPLICATE REGISTRATION =====
+    $stmtExist = $pdo->prepare("SELECT id FROM register WHERE lrn = :lrn LIMIT 1");
+    $stmtExist->execute([':lrn'=>$lrn]);
+    if ($stmtExist->fetch()) { $pdo->rollBack(); send_json(['success'=>false,'msg'=>'Already registered.']); }
 
-        // Get correct value
-        $inputValue = null;
-        $dbValue = null;
+    // ===== GENERATE SAFE ID NUMBER =====
+    $currentYear = date('y');
+    $prefix = 'S'.$currentYear.'-';
 
-        if ($level === 'junior') {
-            $inputValue = $_POST['strand'] ?? '';
-            $dbValue = $enrolled['grade'];
-        } elseif ($level === 'senior') {
-            $inputValue = $_POST['strand'] ?? '';
-            $dbValue = $enrolled['strand'];
-        } elseif ($level === 'college') {
-            $inputValue = $_POST['strand'] ?? '';
-            $dbValue = $enrolled['course'];
-        }
+    $stmtId = $pdo->prepare("
+        SELECT id_number FROM register
+        WHERE id_number LIKE :prefix
+        ORDER BY id DESC
+        LIMIT 1
+        FOR UPDATE
+    ");
+    $stmtId->execute([':prefix'=>$prefix.'%']);
+    $lastId = $stmtId->fetchColumn();
+    $num = $lastId ? intval(explode('-', $lastId)[1]) + 1 : 1;
+    $id_number = $prefix . str_pad($num, 4, '0', STR_PAD_LEFT);
 
-        // Check name
-        if (strcasecmp($enrolled['full_name'], $_POST['full_name']) !== 0) {
-            send_json(['success'=>false,'msg'=>"Please check your information."]);
-        }
+    // ===== INSERT REGISTRATION =====
+    $stmtInsert = $pdo->prepare("
+        INSERT INTO register
+        (lrn, full_name, id_number, grade, strand, course, photo, photo_blob, created_at)
+        VALUES
+        (:lrn, :full_name, :id_number, :grade, :strand, :course, :photo, :photo_blob, NOW())
+    ");
+    $stmtInsert->execute([
+        ':lrn'        => $lrn,
+        ':full_name'  => $enrolled['full_name'],
+        ':id_number'  => $id_number,
+        ':grade'      => $level==='junior' ? $dbValue : null,
+        ':strand'     => $level==='senior' ? $dbValue : null,
+        ':course'     => $level==='college'? $dbValue : null,
+        ':photo'      => $photo_filename,
+        ':photo_blob' => $photo_blob // <— change from $original_base64 to decoded binary
+    ]);
 
-        // Check grade/strand/course
-        if ($dbValue !== $inputValue) {
-            send_json(['success'=>false,'msg'=>"Please check your information."]);
-        }
+    $pdo->commit();
 
-        // Check status
-        if ($enrolled['status'] !== 'enrolled') {
-            send_json(['success'=>false,'msg'=>"You are not enrolled."]);
-        }
-
-        // ===== VALIDATE LEVEL VS STRAND/COURSE =====
-        $level_map = [
-            'junior' => ['Grade 7','Grade 8','Grade 9','Grade 10'],
-            'senior' => ['STEM','HUMMS','ABM','GAS','ICT'],
-            'college'=> ['BSBA','BSE','BEE','BSCS','BAE']
-        ];
-
-        $allowed_strands = $level_map[$level] ?? [];
-        $studentStrand = $enrolled['strand'] ?? '';
-
-        if (!in_array($studentStrand, $allowed_strands)) {
-            send_json(['success'=>false,'msg'=>"Level mismatch with enrolled record."]);
-        }
-
-        // ===== AUTO-GENERATE ID NUMBER =====
-        $currentYear = date('y'); // e.g., '26'
-        $prefix = 'S' . $currentYear . '-';
-        $stmtId = $pdo->prepare("
-            SELECT id_number FROM register 
-            WHERE id_number LIKE :prefix 
-            ORDER BY id_number DESC LIMIT 1
-        ");
-        $stmtId->execute([':prefix' => $prefix . '%']);
-        $lastId = $stmtId->fetchColumn();
-        $num = $lastId ? intval(substr($lastId, 4)) + 1 : 1;
-        $id_number = $prefix . str_pad($num, 4, '0', STR_PAD_LEFT);
-
-        // ===== CHECK IF LRN OR ID ALREADY REGISTERED =====
-        $check = $pdo->prepare("
-            SELECT COUNT(*) FROM register 
-            WHERE lrn=:lrn OR id_number=:id_number
-        ");
-        $check->execute([':lrn'=>$lrn, ':id_number'=>$id_number]);
-        if ($check->fetchColumn() > 0) {
-            send_json(['success'=>false,'msg'=>'This LRN is already registered.']);
-        }
-
-        // ===== INSERT INTO register =====
-        $stmt = $pdo->prepare("
-            INSERT INTO register
-            (lrn, full_name, id_number, grade, strand, course, home_address, guardian_name, guardian_contact, photo, photo_blob, created_at)
-            VALUES
-            (:lrn, :full_name, :id_number, :grade, :strand, :course, :home_address, :guardian_name, :guardian_contact, :photo, :photo_blob, NOW())
-        ");
-
-        // Override submitted fields with verified enrollment data
-        $full_name = $enrolled['full_name'];
-        $home_address = $enrolled['home_address'] ?? '';
-        $guardian_name = $enrolled['guardian_name'] ?? '';
-        $guardian_contact = $enrolled['guardian_contact'] ?? '';
-
-        $grade = $level === 'junior' ? $studentStrand : null;
-        $strand_val = $level === 'senior' ? $studentStrand : null;
-        $course = $level === 'college' ? $studentStrand : null;
-
-        $stmt->execute([
-            ':lrn' => $lrn,
-            ':full_name' => $full_name,
-            ':id_number' => $id_number,
-            ':grade' => $grade,
-            ':strand' => $strand_val,
-            ':course' => $course,
-            ':home_address' => $home_address,
-            ':guardian_name' => $guardian_name,
-            ':guardian_contact' => $guardian_contact,
-            ':photo' => $photo_filename,
-            ':photo_blob' => $photo_base64
-        ]);
-
-        send_json([
-            'success' => true,
-            'msg' => 'Successfully Registered!',
-            'photo_base64' => 'data:image/jpeg;base64,' . $photo_base64,
-            'id_number' => $id_number
-        ]);
-
-    } catch(PDOException $e){
-        send_json(['success'=>false,'msg'=>'Database error: '.$e->getMessage()]);
-    }
+    send_json([
+        'success'=>true,
+        'msg'=>'Successfully Registered!',
+        'id_number'=>$id_number,
+        'photo_base64'=>$original_base64
+    ]);
 }
 ?>
 <!DOCTYPE html>
@@ -183,15 +132,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Student Registration</title>
 <style>
-.photoPreview {
-    display: block;
-    margin: 10px auto;
-    width: 150px;
-    height: 200px;
-    object-fit: cover;
-    border-radius: 10px;
-    border: 1px solid #ccc;
-}
 body{margin:0;font-family:"Segoe UI",Arial,sans-serif;background:#f0f4ff;display:flex;justify-content:center;padding:20px;}
 .main{width:100%;max-width:600px;}
 .topbar{width: 100%;background:white;text-align:center;margin-bottom:20px;}
@@ -210,23 +150,23 @@ body{margin:0;font-family:"Segoe UI",Arial,sans-serif;background:#f0f4ff;display
 .card button:hover{background:#1f2857}
 #popupMsg{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#28a745;color:white;padding:20px;border-radius:12px;font-weight:600;display:none;text-align:center;min-width:220px;max-width:90%;}
 
-.statusMsg{
-    margin-top:8px;
-    padding:8px;
-    border-radius:8px;
+.enrollment-status{
+    font-size:13px;
+    margin-top:-10px;
+    margin-bottom:10px;
     font-weight:600;
-    font-size:14px;
-    display:none;
 }
 
 .status-success{
-    background:#e6f9ed;
-    color:#1e7e34;
+    color:#28a745;
 }
 
 .status-error{
-    background:#ffe6e6;
-    color:#b30000;
+    color:#dc3545;
+}
+
+.status-checking{
+    color:#ffc107;
 }
 
 .photoPreview {
@@ -264,14 +204,12 @@ body{margin:0;font-family:"Segoe UI",Arial,sans-serif;background:#f0f4ff;display
 <div class="card reg-form active" id="juniorHighForm">
 <h3>Register Junior High Student</h3>
 <form class="reg-form-inner" data-level="junior">
-<div class="statusMsg"></div>
 <div class="form-group"><input type="text" name="lrn" placeholder=" " required><label>LRN</label></div>
-<div class="statusMsg"></div>
+<div class="enrollment-status"></div>
 <div class="form-group"><input type="text" name="full_name" placeholder=" " required><label>Full Name</label></div>
 <!-- ID number input removed -->
 <div class="form-group">
-<div class="statusMsg"></div>
-<select name="strand" required>
+<select name="grade" required>
 <option value="" hidden></option>
 <option value="Grade 7">Grade 7</option>
 <option value="Grade 8">Grade 8</option>
@@ -293,6 +231,7 @@ body{margin:0;font-family:"Segoe UI",Arial,sans-serif;background:#f0f4ff;display
 <h3>Register Senior High Student</h3>
 <form class="reg-form-inner" data-level="senior">
 <div class="form-group"><input type="text" name="lrn" placeholder=" " required><label>LRN</label></div>
+<div class="enrollment-status"></div>
 <div class="form-group"><input type="text" name="full_name" placeholder=" " required><label>Full Name</label></div>
 <!-- ID number input removed -->
 <div class="form-group">
@@ -319,10 +258,11 @@ body{margin:0;font-family:"Segoe UI",Arial,sans-serif;background:#f0f4ff;display
 <h3>Register College Student</h3>
 <form class="reg-form-inner" data-level="college">
 <div class="form-group"><input type="text" name="lrn" placeholder=" " required><label>LRN</label></div>
+<div class="enrollment-status"></div>
 <div class="form-group"><input type="text" name="full_name" placeholder=" " required><label>Full Name</label></div>
 <!-- ID number input removed -->
 <div class="form-group">
-<select name="strand" required>
+<select name="course" required>
 <option value="" hidden></option>
 <option value="BSBA">BSBA</option>
 <option value="BSE">BSE</option>
@@ -344,131 +284,229 @@ body{margin:0;font-family:"Segoe UI",Arial,sans-serif;background:#f0f4ff;display
 </div>
 
 <script>
-// Tab switching
+// ===== TAB SWITCHING =====
 const tabs = document.querySelectorAll('.tab-btn');
 const forms = document.querySelectorAll('.reg-form');
+
 tabs.forEach(tab => {
     tab.addEventListener('click', () => {
         tabs.forEach(t => t.classList.remove('active'));
-        tab.classList.add('active');
         forms.forEach(f => f.classList.remove('active'));
-        document.getElementById(tab.dataset.target + 'Form').classList.add('active');
+
+        tab.classList.add('active');
+        document.getElementById(tab.dataset.target + 'Form')
+            .classList.add('active');
     });
 });
 
-// Handle each registration form
+// ===== HANDLE FORMS =====
 document.querySelectorAll('.reg-form-inner').forEach(form => {
+
     const photoInput = form.querySelector('.photoInput');
     const preview = form.querySelector('.photoPreview');
     const lrnInput = form.querySelector('input[name="lrn"]');
+    const statusDiv = form.querySelector('.enrollment-status');
+    const submitBtn = form.querySelector('button');
+
+    const allInputs = Array.from(form.querySelectorAll('input, select'));
+    const editableInputs = allInputs.filter(i => i.name !== 'lrn' && i.type !== 'file');
 
     let resizedPhotoBase64 = '';
-    let timer;
+    let timer = null;
 
     preview.src = '';
 
-    // ===== Photo resize & preview =====
+    // ===== PHOTO RESIZE + PREVIEW =====
     photoInput.addEventListener('change', e => {
+
         const file = e.target.files[0];
-        if(!file){
-            preview.src='';
+        if (!file) {
+            preview.src = '';
             preview.style.display = 'none';
+            resizedPhotoBase64 = '';
             return;
         }
+
         const reader = new FileReader();
-        reader.onload = function(ev){
+        reader.onload = ev => {
             const img = new Image();
-            img.onload = function(){
-                const maxWidth = 800, maxHeight = 1000;
-                let w = img.width, h = img.height;
-                if(w>maxWidth){h=h*(maxWidth/w); w=maxWidth;}
-                if(h>maxHeight){w=w*(maxHeight/h); h=maxHeight;}
+            img.onload = () => {
+
+                const maxWidth = 800;
+                const maxHeight = 1000;
+                let w = img.width;
+                let h = img.height;
+
+                if (w > maxWidth) {
+                    h *= maxWidth / w;
+                    w = maxWidth;
+                }
+
+                if (h > maxHeight) {
+                    w *= maxHeight / h;
+                    h = maxHeight;
+                }
+
                 const canvas = document.createElement('canvas');
-                canvas.width = w; canvas.height = h;
-                canvas.getContext('2d').drawImage(img,0,0,w,h);
-                resizedPhotoBase64 = canvas.toDataURL('image/jpeg',0.85);
+                canvas.width = w;
+                canvas.height = h;
+                canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+
+                resizedPhotoBase64 = canvas.toDataURL('image/jpeg', 0.85);
                 preview.src = resizedPhotoBase64;
                 preview.style.display = 'block';
-            }
+            };
             img.src = ev.target.result;
-        }
+        };
+
         reader.readAsDataURL(file);
     });
 
-    // ===== LRN input: fetch enrolled student info =====
+    // ===== REALTIME LRN CHECK =====
     lrnInput.addEventListener('input', () => {
+
         clearTimeout(timer);
+
         const lrn = lrnInput.value.trim();
-        if (!lrn) return;
+        if (!lrn) {
+            statusDiv.innerHTML = '';
+            return;
+        }
+
+        statusDiv.innerHTML = 'Checking enrollment...';
+        statusDiv.className = 'enrollment-status status-checking';
 
         timer = setTimeout(async () => {
+
+            if (lrn.length < 6) {
+                statusDiv.innerHTML = 'Enter valid LRN';
+                statusDiv.className = 'enrollment-status status-error';
+                return;
+            }
+
             try {
-                const res = await fetch(`enrolledStudents.php?lrn=${encodeURIComponent(lrn)}&level=${form.dataset.level}`);
+
+                const res = await fetch(
+                    `checkEnrolled.php?lrn=${encodeURIComponent(lrn)}&full_name=${encodeURIComponent(form.querySelector('input[name="full_name"]').value)}&level=${form.dataset.level}`
+                );
+
                 const data = await res.json();
 
-                // Select all input/select fields except LRN and file
-                const inputs = Array.from(form.querySelectorAll('input, select'))
-                    .filter(i => i.name !== 'lrn' && i.type !== 'file');
-
                 if (!data.success) {
-                    // Clear autofilled fields
-                    inputs.forEach(i => { i.value=''; i.readOnly=false; i.disabled=false; });
-                    alert('⚠ ' + data.msg);
+
+                    statusDiv.innerHTML = data.msg;
+                    statusDiv.className = 'enrollment-status status-error';
+
+                    editableInputs.forEach(i => {
+                        i.value = '';
+                        i.readOnly = false;
+                        i.disabled = false;
+                    });
+
                 } else {
+
+                    statusDiv.innerHTML = '✔ Student is officially enrolled';
+                    statusDiv.className = 'enrollment-status status-success';
+
                     const d = data.data;
 
-                    // Autofill and lock fields
-                    inputs.forEach(i => {
-                        if(i.name in d){
+                    editableInputs.forEach(i => {
+                        if (i.name in d) {
                             i.value = d[i.name] || '';
-                            i.readOnly = true;      // prevent editing
-                            i.disabled = i.tagName==='SELECT'; // disable select dropdown
+                            i.readOnly = true;
+                            if (i.tagName === 'SELECT') i.disabled = true;
                         }
                     });
                 }
+
             } catch (err) {
-                console.error('Error checking enrollment:', err);
+                console.error(err);
+                statusDiv.innerHTML = 'Server error';
+                statusDiv.className = 'enrollment-status status-error';
             }
-        }, 500);
+
+        }, 400);
     });
 
-    // ===== Form submission =====
+    // ===== FORM SUBMIT =====
     form.addEventListener('submit', async e => {
+
         e.preventDefault();
-        if(!resizedPhotoBase64){alert('Please select a photo'); return;}
+
+        if (!resizedPhotoBase64) {
+            statusDiv.innerHTML = 'Please select a photo.';
+            statusDiv.className = 'enrollment-status status-error';
+            return;
+        }
+
+        if (!statusDiv.classList.contains('status-success')) {
+            statusDiv.innerHTML = 'Student must be enrolled before registering.';
+            statusDiv.className = 'enrollment-status status-error';
+            return;
+        }
+
+        submitBtn.disabled = true;
+        submitBtn.innerText = 'Processing...';
+
         const fd = new FormData();
         fd.append('level', form.dataset.level);
-        for(let input of form.elements){
-            if(input.name && input.type!=='file') fd.append(input.name,input.value);
-        }
-        fd.append('photo_base64',resizedPhotoBase64);
+
+        allInputs.forEach(input => {
+            if (input.name && input.type !== 'file') {
+                fd.append(input.name, input.value);
+            }
+        });
+
+        fd.append('photo_base64', resizedPhotoBase64);
 
         try {
-            const res = await fetch('index.php',{method:'POST',body:fd});
+
+            const res = await fetch('index.php', {
+                method: 'POST',
+                body: fd
+            });
+
             const data = await res.json();
 
-            if(data.success){
-                const p=document.getElementById('popupMsg');
-                p.innerHTML='✔ '+data.msg+'<br>ID Number: '+data.id_number;
-                p.style.display='block';
-                setTimeout(()=>p.style.display='none',2500);
+            if (data.success) {
 
-                // Show uploaded photo in preview
+                statusDiv.innerHTML =
+                    '✔ Registration Successful! ID: ' + data.id_number;
+                statusDiv.className = 'enrollment-status status-success';
+
                 preview.src = data.photo_base64;
                 preview.style.display = 'block';
 
-                // Reset file input & preview
+                // RESET FORM CLEANLY
                 photoInput.value = '';
                 resizedPhotoBase64 = '';
 
-                // Unlock input fields for next entry
-                Array.from(form.querySelectorAll('input, select'))
-                    .forEach(i => { i.readOnly=false; i.disabled=false; i.value=''; });
-            } else alert(data.msg);
+                editableInputs.forEach(i => {
+                    i.readOnly = false;
+                    i.disabled = false;
+                    i.value = '';
+                });
 
-        } catch(err){
-            alert('Submit failed: '+err.message);
+                lrnInput.value = '';
+
+                setTimeout(() => {
+                    statusDiv.innerHTML = '';
+                }, 5000);
+
+            } else {
+                statusDiv.innerHTML = data.msg;
+                statusDiv.className = 'enrollment-status status-error';
+            }
+
+        } catch (err) {
+            console.error(err);
+            statusDiv.innerHTML =
+                'Submission failed. Please try again.';
+            statusDiv.className = 'enrollment-status status-error';
         }
+
+        submitBtn.disabled = false;
+        submitBtn.innerText = 'Register';
     });
 });
 </script>
