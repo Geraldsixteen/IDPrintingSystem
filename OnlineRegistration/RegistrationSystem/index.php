@@ -32,29 +32,34 @@ function send_json($arr){
 // ===== HANDLE POST REGISTRATION =====
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
-    $original_base64 = $_POST['photo_base64'] ?? '';
-    if (!$original_base64) send_json(['success'=>false,'msg'=>'Photo is required.']);
+    // --- Gather inputs ---
+    $original_base64  = $_POST['photo_base64'] ?? '';
+    $level            = $_POST['level'] ?? '';
+    $lrn              = trim($_POST['lrn'] ?? '');
+    $full_name        = trim($_POST['full_name'] ?? '');
+    $home_address     = trim($_POST['home_address'] ?? '');
+    $guardian_name    = trim($_POST['guardian_name'] ?? '');
+    $guardian_contact = trim($_POST['guardian_contact'] ?? '');
 
-    $clean_base64 = str_replace('data:image/jpeg;base64,', '', $original_base64);
-    $photo_blob = base64_decode($clean_base64);
-    $photo_filename = null; // optional, using blob only
+    // Validate mandatory fields
+    if (!$original_base64 || !$lrn || !$full_name || !$level || !$home_address || !$guardian_name || !$guardian_contact) {
+        send_json(['success'=>false,'msg'=>'Incomplete information.']);
+    }
 
-    $level = $_POST['level'] ?? '';
-    $lrn = trim($_POST['lrn'] ?? '');
-    $full_name = trim($_POST['full_name'] ?? '');
-
-    // ===== MAP LEVEL INPUT =====
+    // --- Map level to input value ---
     $inputValue = '';
     if ($level === 'junior') $inputValue = trim($_POST['grade'] ?? '');
     elseif ($level === 'senior') $inputValue = trim($_POST['strand'] ?? '');
     elseif ($level === 'college') $inputValue = trim($_POST['course'] ?? '');
     else send_json(['success'=>false,'msg'=>'Invalid level selection.']);
 
-    if (!$lrn || !$full_name || !$inputValue) send_json(['success'=>false,'msg'=>'Incomplete information.']);
+    if (!$inputValue) send_json(['success'=>false,'msg'=>'Please select Grade/Strand/Course.']);
+
+    $photo_blob = base64_decode(str_replace('data:image/jpeg;base64,', '', $original_base64));
 
     $pdo->beginTransaction();
 
-    // ===== LOCK ENROLLED STUDENT RECORD =====
+    // --- Lock enrolled student record ---
     $stmt = $pdo->prepare("
         SELECT lrn, full_name, grade, strand, course, status
         FROM enrolled_students
@@ -68,23 +73,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($enrolled['status'] !== 'enrolled') { $pdo->rollBack(); send_json(['success'=>false,'msg'=>'Enrollment inactive.']); }
     if (trim(strtolower($enrolled['full_name'])) !== trim(strtolower($full_name))) { $pdo->rollBack(); send_json(['success'=>false,'msg'=>'Name does not match record.']); }
 
-    // ===== CHECK LEVEL MATCH =====
-    $dbValue = '';
-    if ($level === 'junior') $dbValue = $enrolled['grade'];
-    elseif ($level === 'senior') $dbValue = $enrolled['strand'];
-    elseif ($level === 'college') $dbValue = $enrolled['course'];
-
+    // --- Check level match ---
+    $dbValue = $level==='junior' ? $enrolled['grade'] : ($level==='senior' ? $enrolled['strand'] : $enrolled['course']);
     if (!$dbValue || trim($dbValue) !== $inputValue) { $pdo->rollBack(); send_json(['success'=>false,'msg'=>'Grade/Strand/Course mismatch.']); }
 
-    // ===== CHECK DUPLICATE REGISTRATION =====
+    // --- Check duplicate registration ---
     $stmtExist = $pdo->prepare("SELECT id FROM register WHERE lrn = :lrn LIMIT 1");
     $stmtExist->execute([':lrn'=>$lrn]);
     if ($stmtExist->fetch()) { $pdo->rollBack(); send_json(['success'=>false,'msg'=>'Already registered.']); }
 
-    // ===== GENERATE SAFE ID NUMBER =====
+    // --- Generate unique ID number ---
     $currentYear = date('y');
     $prefix = 'S'.$currentYear.'-';
-
     $stmtId = $pdo->prepare("
         SELECT id_number FROM register
         WHERE id_number LIKE :prefix
@@ -97,22 +97,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $num = $lastId ? intval(explode('-', $lastId)[1]) + 1 : 1;
     $id_number = $prefix . str_pad($num, 4, '0', STR_PAD_LEFT);
 
-    // ===== INSERT REGISTRATION =====
+    // --- Insert registration ---
     $stmtInsert = $pdo->prepare("
         INSERT INTO register
-        (lrn, full_name, id_number, grade, strand, course, photo, photo_blob, created_at)
+        (lrn, full_name, id_number, grade, strand, course, home_address, guardian_name, guardian_contact, photo, photo_blob, created_at)
         VALUES
-        (:lrn, :full_name, :id_number, :grade, :strand, :course, :photo, :photo_blob, NOW())
+        (:lrn, :full_name, :id_number, :grade, :strand, :course, :home_address, :guardian_name, :guardian_contact, :photo, :photo_blob, NOW())
     ");
     $stmtInsert->execute([
-        ':lrn'        => $lrn,
-        ':full_name'  => $enrolled['full_name'],
-        ':id_number'  => $id_number,
-        ':grade'      => $level==='junior' ? $dbValue : null,
-        ':strand'     => $level==='senior' ? $dbValue : null,
-        ':course'     => $level==='college'? $dbValue : null,
-        ':photo'      => $photo_filename,
-        ':photo_blob' => $photo_blob // <— change from $original_base64 to decoded binary
+        ':lrn'              => $lrn,
+        ':full_name'        => $enrolled['full_name'],
+        ':id_number'        => $id_number,
+        ':grade'            => $level==='junior' ? $dbValue : null,
+        ':strand'           => $level==='senior' ? $dbValue : null,
+        ':course'           => $level==='college'? $dbValue : null,
+        ':home_address'     => $home_address,
+        ':guardian_name'    => $guardian_name,
+        ':guardian_contact' => $guardian_contact,
+        ':photo'            => null,
+        ':photo_blob'       => $photo_blob
     ]);
 
     $pdo->commit();
