@@ -47,17 +47,52 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-        // ===== SERVER-SIDE ENROLLMENT VALIDATION =====
+        // ===== STRICT SERVER VALIDATION =====
         $stmtCheck = $pdo->prepare("
             SELECT * FROM enrolled_students
-            WHERE lrn = :lrn AND status = 'enrolled'
+            WHERE lrn = :lrn
             LIMIT 1
         ");
         $stmtCheck->execute([':lrn' => $lrn]);
         $enrolled = $stmtCheck->fetch(PDO::FETCH_ASSOC);
 
         if (!$enrolled) {
-            send_json(['success'=>false,'msg'=>"You are not enrolled in the system."]);
+            send_json(['success'=>false,'msg'=>"You are not enrolled."]);
+        }
+
+        // Check level
+        if ($enrolled['level'] !== $level) {
+            send_json(['success'=>false,'msg'=>"Please check your information."]);
+        }
+
+        // Get correct value
+        $inputValue = null;
+        $dbValue = null;
+
+        if ($level === 'junior') {
+            $inputValue = $_POST['strand'] ?? '';
+            $dbValue = $enrolled['grade'];
+        } elseif ($level === 'senior') {
+            $inputValue = $_POST['strand'] ?? '';
+            $dbValue = $enrolled['strand'];
+        } elseif ($level === 'college') {
+            $inputValue = $_POST['strand'] ?? '';
+            $dbValue = $enrolled['course'];
+        }
+
+        // Check name
+        if (strcasecmp($enrolled['full_name'], $_POST['full_name']) !== 0) {
+            send_json(['success'=>false,'msg'=>"Please check your information."]);
+        }
+
+        // Check grade/strand/course
+        if ($dbValue !== $inputValue) {
+            send_json(['success'=>false,'msg'=>"Please check your information."]);
+        }
+
+        // Check status
+        if ($enrolled['status'] !== 'enrolled') {
+            send_json(['success'=>false,'msg'=>"You are not enrolled."]);
         }
 
         // ===== VALIDATE LEVEL VS STRAND/COURSE =====
