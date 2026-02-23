@@ -64,11 +64,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             send_json(['success'=>false,'msg'=>'Name does not match record.']);
         }
 
-        // ===== LEVEL MATCH =====
-        $dbValue = $enrolled[$levelField] ?? '';
-        if ($dbValue && trim($dbValue) !== $inputValue) {
+        // ===== STRICT LEVEL VALIDATION =====
+        $dbValue = trim($enrolled[$levelField] ?? '');
+
+        // 1️⃣ If database has NO value → incomplete enrollment record
+        if ($dbValue === '') {
             $pdo->rollBack();
-            send_json(['success'=>false,'msg'=>'Grade/Strand/Course mismatch.']);
+            send_json([
+                'success'=>false,
+                'msg'=>'Enrollment information incomplete. Please contact registrar.'
+            ]);
+        }
+
+        // 2️⃣ If value does not match selected input
+        if ($dbValue !== $inputValue) {
+            $pdo->rollBack();
+            send_json([
+                'success'=>false,
+                'msg'=>'Grade/Strand/Course does not match enrollment record.'
+            ]);
         }
 
         // ===== DUPLICATE CHECK =====
@@ -357,17 +371,34 @@ form.querySelector('input[name="full_name"]').addEventListener('input', checkEnr
     try{
       const res=await fetch('index.php',{method:'POST',body:fd});
       const data=await res.json();
-      if(data.success){setStatus(`✔ Registration Successful! ID: ${data.id_number}`,'success');preview.src=data.photo_base64;preview.style.display='block';registeredLRNs.set(lrn,form.dataset.level);resetPhoto();resetEditableInputs();allInputs.forEach(i=>{
+      if(data.success){showPopup(`✔ Registration Successful!<br>ID: ${data.id_number}`, "success");preview.src=data.photo_base64;preview.style.display='block';registeredLRNs.set(lrn,form.dataset.level);resetPhoto();resetEditableInputs();allInputs.forEach(i=>{
     if(i.tagName==='SELECT'){
         i.selectedIndex=0;
         i.disabled=false;
     }
     if(i.readOnly) i.readOnly=false;});lrnInput.value='';setTimeout(clearStatus,5000);
-    } else {setStatus(data.msg,'error');}
+    } else {showPopup(data.msg,'error');}
     }catch(err){console.error(err);setStatus('Submission failed. Please try again.','error');}
     submitBtn.disabled=false;submitBtn.innerText='Register';
   });
 });
+
+function showPopup(message, type="success"){
+    const popup = document.getElementById("popupMsg");
+
+    popup.innerHTML = message;
+    popup.style.display = "block";
+
+    if(type === "success"){
+        popup.style.background = "#28a745";
+    } else {
+        popup.style.background = "#dc3545";
+    }
+
+    setTimeout(()=>{
+        popup.style.display = "none";
+    }, 4000);
+}
 </script>
 </body>
 </html>
