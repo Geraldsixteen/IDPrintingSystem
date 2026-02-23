@@ -111,6 +111,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $num = $lastId ? intval(explode('-', $lastId)[1]) + 1 : 1;
         $id_number = $prefix . str_pad($num, 4, '0', STR_PAD_LEFT);
 
+        $photoFilename = 'STU_' . time() . '_' . mt_rand(1000,9999) . '.jpg';
+
         // ===== INSERT =====
         $stmtInsert = $pdo->prepare("
             INSERT INTO register
