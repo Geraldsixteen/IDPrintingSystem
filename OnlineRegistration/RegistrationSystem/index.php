@@ -127,7 +127,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmtInsert->bindValue(':home_address', $home_address);
         $stmtInsert->bindValue(':guardian_name', $guardian_name);
         $stmtInsert->bindValue(':guardian_contact', $guardian_contact);
-        $stmtInsert->bindValue(':photo', null);
+        $stmtInsert->bindValue(':photo', $photoFilename);
         $stmtInsert->bindValue(':photo_blob', $photo_blob, PDO::PARAM_LOB);
 
         $stmtInsert->execute();
