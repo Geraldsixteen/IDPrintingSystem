@@ -349,8 +349,15 @@ function checkEnrollment(){
 
             if(!data.success){
                 setStatus(data.msg,'error');
+
+                // 🔓 unlock LRN if failed
+                lrnInput.readOnly = false;
+
             }else{
                 setStatus('✔ Student is officially enrolled','success');
+
+                // 🔒 lock LRN when valid
+                lrnInput.readOnly = true;
             }
 
         }catch(err){
@@ -362,6 +369,7 @@ function checkEnrollment(){
 
 lrnInput.addEventListener('input', checkEnrollment);
 form.querySelector('input[name="full_name"]').addEventListener('blur', checkEnrollment);
+form.querySelector(`select[name="${fieldName}"]`).addEventListener('change', checkEnrollment);
 
   // ===== FORM SUBMIT =====
   form.addEventListener('submit',async e=>{
@@ -380,7 +388,8 @@ form.querySelector('input[name="full_name"]').addEventListener('blur', checkEnro
         i.selectedIndex=0;
         i.disabled=false;
     }
-    if(i.readOnly) i.readOnly=false;});lrnInput.value='';setTimeout(clearStatus,5000);
+    if(i.readOnly) i.readOnly=false;});lrnInput.value='';
+    lrnInput.readOnly = false;setTimeout(clearStatus,5000);
     } else {showPopup(data.msg,'error');}
     }catch(err){console.error(err);setStatus('Submission failed. Please try again.','error');}
     submitBtn.disabled=false;submitBtn.innerText='Register';
