@@ -322,7 +322,16 @@ function checkEnrollment(){
     const lrn = lrnInput.value.trim();
     const fullName = form.querySelector('input[name="full_name"]').value.trim();
 
-    if(!lrn || !fullName){
+    const levelFieldMap = {junior:'grade', senior:'strand', college:'course'};
+    const fieldName = levelFieldMap[form.dataset.level];
+    const fieldValue = form.querySelector(`select[name="${fieldName}"]`)?.value || '';
+
+    // ✅ STOP EARLY CHECKING
+    if(
+        lrn.length < 12 ||          // typical LRN length
+        fullName.length < 5 ||      // prevent 1-letter checking
+        fieldValue === ''           // require grade/strand/course
+    ){
         clearStatus();
         return;
     }
@@ -332,10 +341,6 @@ function checkEnrollment(){
 
     timer=setTimeout(async()=>{
         try{
-            const levelFieldMap={junior:'grade',senior:'strand',college:'course'};
-            const fieldName=levelFieldMap[form.dataset.level];
-            const fieldValue=form.querySelector(`select[name="${fieldName}"]`)?.value||'';
-
             const res=await fetch(
                 `checkEnrolled.php?lrn=${encodeURIComponent(lrn)}&full_name=${encodeURIComponent(fullName)}&level=${form.dataset.level}&${fieldName}=${encodeURIComponent(fieldValue)}`
             );
@@ -344,7 +349,6 @@ function checkEnrollment(){
 
             if(!data.success){
                 setStatus(data.msg,'error');
-                resetEditableInputs();
             }else{
                 setStatus('✔ Student is officially enrolled','success');
             }
@@ -353,11 +357,11 @@ function checkEnrollment(){
             console.error(err);
             setStatus('Server error','error');
         }
-    },300);
+    },500);
 }
 
 lrnInput.addEventListener('input', checkEnrollment);
-form.querySelector('input[name="full_name"]').addEventListener('input', checkEnrollment);
+form.querySelector('input[name="full_name"]').addEventListener('blur', checkEnrollment);
 
   // ===== FORM SUBMIT =====
   form.addEventListener('submit',async e=>{
