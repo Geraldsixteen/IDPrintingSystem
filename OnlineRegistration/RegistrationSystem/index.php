@@ -316,14 +316,14 @@ document.querySelectorAll('.reg-form-inner').forEach(form=>{
   function capitalize(s){return s.charAt(0).toUpperCase()+s.slice(1);}
   function highlightTab(level){tabs.forEach(t=>t.classList.remove('active'));formsEl.forEach(f=>f.classList.remove('active'));const t=document.querySelector(`.tab-btn[data-target="${level}"]`);const f=document.getElementById(level+'Form');if(t&&f){t.classList.add('active');f.classList.add('active');}}
 
+    const levelFieldMap = {junior:'grade', senior:'strand', college:'course'};
+    const fieldName = levelFieldMap[form.dataset.level];
+
 function checkEnrollment(){
     clearTimeout(timer);
 
     const lrn = lrnInput.value.trim();
     const fullName = form.querySelector('input[name="full_name"]').value.trim();
-
-    const levelFieldMap = {junior:'grade', senior:'strand', college:'course'};
-    const fieldName = levelFieldMap[form.dataset.level];
     const fieldValue = form.querySelector(`select[name="${fieldName}"]`)?.value || '';
 
     // ✅ STOP EARLY CHECKING
