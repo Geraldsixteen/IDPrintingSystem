@@ -116,6 +116,7 @@ overflow-x:auto;
     <div>
         <h2>ID System</h2>
         <a href="index.php" class="active">🏠 Dashboard</a>
+        <a href="admin-review.php">📝 Review</a>
         <a href="records.php">📑 Records</a>
         <a href="archive.php">📁 Archive</a>
         <a href="logout.php" onclick="return confirm('Are you sure you want to logout?')">📤 Logout</a>

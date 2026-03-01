@@ -100,7 +100,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
-    // ---------------- UPDATE DATABASE ----------------
+   
     $stmt = $pdo->prepare("
         UPDATE register SET
             lrn=:lrn,
@@ -125,7 +125,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $stmt->bindValue(':guardian_name', $formData['guardian_name']);
     $stmt->bindValue(':guardian_contact', $formData['guardian_contact']);
     $stmt->bindValue(':photo', $formData['photo']);
-    $stmt->bindValue(':photo_blob', $formData['photo_blob'] ?? null, PDO::PARAM_LOB); // <-- fix UTF8 issue
+    $stmt->bindValue(':photo_blob', $formData['photo_blob'] ?? null, PDO::PARAM_LOB);
     $stmt->bindValue(':id', $id, PDO::PARAM_INT);
 
     $stmt->execute();
@@ -134,11 +134,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     exit;
 }
 
-// ---------------- THEME ----------------
+
 $themeClass = (isset($_COOKIE['theme']) && $_COOKIE['theme'] == 'dark') ? 'dark' : '';
 ?>
 
-<!-- ---------------- HTML FORM ---------------- -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -180,6 +179,7 @@ button:hover{ background:#2d3a80; }
     <div>
         <h2>ID System</h2>
         <a href="index.php">🏠 Dashboard</a>
+        <a href="admin-review.php">📝 Review</a>
         <a href="records.php">📑 Records</a>
         <a href="archive.php">📁 Archive</a>
         <a href="logout.php" onclick="return confirm('Are you sure you want to logout?')">📤 Logout</a>

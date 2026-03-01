@@ -1,5 +1,5 @@
 <?php  
-//require_once __DIR__ . '/admin-auth.php';
+require_once __DIR__ . '/admin-auth.php';
 require_once __DIR__ . '/../Config/database.php';
 require_once __DIR__ . '/photo-helper.php';
 
@@ -264,6 +264,7 @@ img{width:70px;height:90px;object-fit:cover;border-radius:6px;border:2px solid #
     <div>
         <h2>ID System</h2>
         <a href="index.php">🏠 Dashboard</a>
+        <a href="admin-review.php">📝 Review</a>
         <a href="records.php">📑 Records</a>
         <a href="archive.php" class="active">📁 Archive</a>
         <a href="logout.php" onclick="return confirm('Are you sure you want to logout?')">📤 Logout</a>

@@ -17,7 +17,7 @@ $seniorStrands = ['HUMMS','ABM','STEM','GAS','ICT'];
 $courses = ['BSBA','BSE','BEE','BSCS','BAE'];
 
 // ================= BUILD SQL =================
-$sql = "SELECT * FROM register WHERE 1=1";
+$sql = "SELECT * FROM register WHERE status='approved'";
 $params = [];
 
 if ($search) {
@@ -124,6 +124,7 @@ img { width:70px; height:90px; object-fit:cover; border-radius:6px; border:2px s
     <div>
         <h2>ID System</h2>
         <a href="index.php">🏠 Dashboard</a>
+        <a href="admin-review.php">📝 Review</a>
         <a href="records.php" class="active">📑 Records</a>
         <a href="archive.php">📁 Archive</a>
         <a href="logout.php" onclick="return confirm('Are you sure you want to logout?')">📤 Logout</a>
@@ -146,6 +147,11 @@ img { width:70px; height:90px; object-fit:cover; border-radius:6px; border:2px s
             ✅ ID printed and archived successfully!
         </div>
     <?php endif; ?>
+<?php if(isset($_GET['deleted'])): ?>
+    <div class="success-msg">
+        ✅ Record successfully deleted!
+    </div>
+<?php endif; ?>
             <!-- Filters -->
             <div class="filters">
                 <!-- Junior High -->
@@ -229,10 +235,18 @@ img { width:70px; height:90px; object-fit:cover; border-radius:6px; border:2px s
                             <td><?= $row['created_at'] ? date('Y-m-d H:i:s', strtotime($row['created_at'])) : '-' ?></td>
                             <td><?= $row['restored_at'] ? date('Y-m-d H:i:s', strtotime($row['restored_at'])) : '-' ?></td>
                             <td class="actions">
+                                <!-- Edit Button -->
                                 <a href="update.php?id=<?= $row['id'] ?>"><button class="edit-btn">Edit</button></a>
+
+                                <!-- Download Button (replacing Print) -->
                                 <a href="generate_id.php?id=<?= $row['id'] ?>" 
-                                onclick="return confirmPrintArchive('<?= htmlspecialchars($row['full_name']) ?>');">
-                                    <button class="edit-btn" style="background:#3498db;">🖨️ Print</button>
+                                    onclick="return confirmDownload('<?= htmlspecialchars($row['full_name']) ?>');" target="_blank">
+                                        <button class="edit-btn" style="background:#3498db;">⬇️ Download</button>
+                                    </a>
+
+                                <!-- Delete Button -->
+                                <a href="delete.php?id=<?= $row['id'] ?>" onclick="return confirm('⚠ Are you sure you want to delete <?= htmlspecialchars($row['full_name']) ?>?');">
+                                    <button class="edit-btn" style="background:#e74c3c;">🗑️ Delete</button>
                                 </a>
                             </td>
                         </tr>
@@ -248,15 +262,22 @@ img { width:70px; height:90px; object-fit:cover; border-radius:6px; border:2px s
 </div>
 
 <script>
-function confirmPrintArchive(name) {
-    return confirm(`⚠ Are you sure you want to print and archive the ID for "${name}"?\nThis will remove it from the active records.`);
+function confirmDownload(name) {
+    return confirm(`⚠ Are you sure you want to download ID for "${name}"?\nThis will remove it from the active records and it can be moved on archive.`);
 }
 
 document.addEventListener("DOMContentLoaded", function() {
     const url = new URL(window.location);
+
+    // Remove 'updated' parameter if exists
     if (url.searchParams.has('updated')) {
-        // Remove updated parameter from URL
         url.searchParams.delete('updated');
+        window.history.replaceState({}, document.title, url.pathname + url.search);
+    }
+
+    // Remove 'deleted' parameter if exists (to prevent duplicate popup)
+    if (url.searchParams.has('deleted')) {
+        url.searchParams.delete('deleted');
         window.history.replaceState({}, document.title, url.pathname + url.search);
     }
 });

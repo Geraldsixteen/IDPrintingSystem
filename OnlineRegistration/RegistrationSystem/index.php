@@ -1,8 +1,23 @@
-<?php  
+<?php
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+
 session_start();
 require_once __DIR__ . '/../Config/database.php';
+require_once __DIR__ . '/vendor/autoload.php';
 
-// ===== JSON RESPONSE =====
+use PHPMailer\PHPMailer\PHPMailer;
+use PHPMailer\PHPMailer\Exception;
+use Dotenv\Dotenv;
+
+/* ===== Load .env ===== */
+$dotenv = Dotenv::createImmutable(__DIR__);
+$dotenv->safeload();
+
+
+/* ===============================
+   HELPER
+=================================*/
 function send_json($arr){
     if(ob_get_level()) ob_end_clean();
     header('Content-Type: application/json; charset=utf-8');
@@ -10,32 +25,129 @@ function send_json($arr){
     exit;
 }
 
-// ===== HANDLE POST =====
+/* ===============================
+   HANDLE POST
+=================================*/
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
-    try {
+    /* ========= OTP REQUEST ========= */
+    if(isset($_POST['otp_request'], $_POST['email'])){
 
-        $level            = $_POST['level'] ?? '';
-        $lrn              = trim($_POST['lrn'] ?? '');
-        $full_name        = trim($_POST['full_name'] ?? '');
-        $home_address     = trim($_POST['home_address'] ?? '');
-        $guardian_name    = trim($_POST['guardian_name'] ?? '');
-        $guardian_contact = trim($_POST['guardian_contact'] ?? '');
-        $original_base64  = $_POST['photo_base64'] ?? '';
+        $email = trim($_POST['email']);
 
-        if (!$lrn || !$full_name || !$level || !$home_address || !$guardian_name || !$guardian_contact || !$original_base64) {
-            send_json(['success'=>false,'msg'=>'Incomplete information']);
+        if(!filter_var($email, FILTER_VALIDATE_EMAIL) || !str_ends_with($email,'@gmail.com')){
+            send_json(['success'=>false,'msg'=>'Enter a valid Gmail account.']);
         }
 
-        $levelField = $level==='junior' ? 'grade' : ($level==='senior' ? 'strand' : 'course');
-        $inputValue = trim($_POST[$levelField] ?? '');
+        $otp_code = str_pad(random_int(0,999999),6,'0',STR_PAD_LEFT);
+        $otp_expiry = time() + 300; // 5 minutes
 
-        if(!$inputValue){
+        $_SESSION['otp'][$email] = [
+            'code' => $otp_code,
+            'expiry' => $otp_expiry,
+            'verified' => false
+        ];
+
+        try{
+            $mail = new PHPMailer(true);
+            $mail->isSMTP();
+            $mail->Host       = 'smtp.gmail.com';
+            $mail->SMTPAuth   = true;
+            $mail->Username   = $_ENV['MAIL_USERNAME']; // from .env
+            $mail->Password   = $_ENV['MAIL_PASSWORD']; // from .env
+            $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;
+            $mail->Port       = 465;
+
+            $mail->setFrom($_ENV['MAIL_FROM'],'CDLB Registration');
+            $mail->addAddress($email);
+
+            $mail->isHTML(true);
+            $mail->Subject = 'Your OTP Code';
+            $mail->Body    = "
+                Hello Student,<br><br>
+                Your OTP Code is: <b>$otp_code</b><br>
+                This code will expire in 5 minutes.
+            ";
+
+            $mail->send();
+            send_json(['success'=>true,'msg'=>'OTP sent successfully.']);
+
+        }catch(Exception $e){
+            send_json([
+                'success'=>false,
+                'msg'=>'Mailer Error: '.$mail->ErrorInfo
+            ]);
+        }
+    }
+
+    /* ========= OTP VERIFY ========= */
+    if(isset($_POST['otp_verify'], $_POST['email'], $_POST['otp'])){
+
+        $email = trim($_POST['email']);
+        $otp_input = trim($_POST['otp']);
+
+        if(!isset($_SESSION['otp'][$email])){
+            send_json(['success'=>false,'msg'=>'No OTP requested.']);
+        }
+
+        $otpData = $_SESSION['otp'][$email];
+
+        if(time() > $otpData['expiry']){
+            unset($_SESSION['otp'][$email]);
+            send_json(['success'=>false,'msg'=>'OTP expired.']);
+        }
+
+        if($otp_input !== $otpData['code']){
+            send_json(['success'=>false,'msg'=>'Invalid OTP.']);
+        }
+
+        $_SESSION['otp'][$email]['verified'] = true;
+
+        send_json(['success'=>true,'msg'=>'OTP verified successfully.']);
+    }
+
+    /* ========= REGISTRATION ========= */
+    try {
+
+        $level = $_POST['level'] ?? '';
+        $lrn = trim($_POST['lrn'] ?? '');
+        $full_name = trim($_POST['full_name'] ?? '');
+        $email = trim($_POST['email'] ?? '');
+        $home_address = trim($_POST['home_address'] ?? '');
+        $guardian_name = trim($_POST['guardian_name'] ?? '');
+        $guardian_contact = trim($_POST['guardian_contact'] ?? '');
+        $photo_base64 = $_POST['photo_base64'] ?? '';
+
+        if(!$lrn || !$full_name || !$email || !$level || !$home_address || !$guardian_name || !$guardian_contact || !$photo_base64){
+            send_json(['success'=>false,'msg'=>'Incomplete information.']);
+        }
+
+        /* ---- CHECK OTP VERIFIED ---- */
+        if(
+            !isset($_SESSION['otp'][$email]) ||
+            $_SESSION['otp'][$email]['verified'] !== true
+        ){
+            send_json(['success'=>false,'msg'=>'Please verify OTP first.']);
+        }
+
+        /* ---- DETERMINE LEVEL FIELD ---- */
+        $grade = $strand = $course = null;
+
+        if($level === 'junior'){
+            $grade = trim($_POST['grade'] ?? '');
+        } elseif($level === 'senior'){
+            $strand = trim($_POST['strand'] ?? '');
+        } elseif($level === 'college'){
+            $course = trim($_POST['course'] ?? '');
+        }
+
+        if(!$grade && !$strand && !$course){
             send_json(['success'=>false,'msg'=>'Please select Grade/Strand/Course.']);
         }
 
+        /* ---- DECODE PHOTO ---- */
         $photo_blob = base64_decode(
-            preg_replace('#^data:image/\w+;base64,#i', '', $original_base64)
+            preg_replace('#^data:image/\w+;base64,#i','',$photo_base64)
         );
 
         if(!$photo_blob){
@@ -44,118 +156,68 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $pdo->beginTransaction();
 
-        // ===== LOCK ENROLLED =====
-        $stmt = $pdo->prepare("SELECT * FROM enrolled_students WHERE lrn = :lrn FOR UPDATE");
-        $stmt->execute([':lrn'=>$lrn]);
-        $enrolled = $stmt->fetch(PDO::FETCH_ASSOC);
-
-        if (!$enrolled) {
-            $pdo->rollBack();
-            send_json(['success'=>false,'msg'=>'You are not enrolled.']);
+        if(!isset($pdo)){
+            send_json(['success'=>false,'msg'=>'Database connection not found']);
         }
 
-        if ($enrolled['status'] !== 'enrolled') {
+        /* ---- DUPLICATE CHECK ---- */
+        $stmt = $pdo->prepare("SELECT id FROM register WHERE lrn=:lrn OR email=:email LIMIT 1");
+        $stmt->execute([
+            ':lrn'=>$lrn,
+            ':email'=>$email
+        ]);
+
+        if($stmt->fetch()){
             $pdo->rollBack();
-            send_json(['success'=>false,'msg'=>'Enrollment inactive.']);
+            send_json(['success'=>false,'msg'=>'Student already registered.']);
         }
 
-        if (trim(strtolower($enrolled['full_name'])) !== trim(strtolower($full_name))) {
-            $pdo->rollBack();
-            send_json(['success'=>false,'msg'=>'Name does not match record.']);
-        }
+        $photoFilename = 'STU_'.time().'_'.mt_rand(1000,9999).'.jpg';
 
-        // ===== STRICT LEVEL VALIDATION =====
-        $dbValue = trim($enrolled[$levelField] ?? '');
-
-        // 1️⃣ If database has NO value → incomplete enrollment record
-        if ($dbValue === '') {
-            $pdo->rollBack();
-            send_json([
-                'success'=>false,
-                'msg'=>'Enrollment information incomplete. Please contact registrar.'
-            ]);
-        }
-
-        // 2️⃣ If value does not match selected input
-        if ($dbValue !== $inputValue) {
-            $pdo->rollBack();
-            send_json([
-                'success'=>false,
-                'msg'=>'Grade/Strand/Course does not match enrollment record.'
-            ]);
-        }
-
-        // ===== DUPLICATE CHECK =====
-        $stmtExist = $pdo->prepare("SELECT id FROM register WHERE lrn = :lrn LIMIT 1");
-        $stmtExist->execute([':lrn'=>$lrn]);
-        if ($stmtExist->fetch()) {
-            $pdo->rollBack();
-            send_json(['success'=>false,'msg'=>'Already registered.']);
-        }
-
-        // ===== GENERATE ID =====
-        $currentYear = date('y');
-        $prefix = 'S'.$currentYear.'-';
-
-        $stmtId = $pdo->prepare("
-            SELECT id_number 
-            FROM register 
-            WHERE id_number LIKE :prefix 
-            ORDER BY id DESC 
-            LIMIT 1 
-            FOR UPDATE
-        ");
-        $stmtId->execute([':prefix'=>$prefix.'%']);
-        $lastId = $stmtId->fetchColumn();
-
-        $num = $lastId ? intval(explode('-', $lastId)[1]) + 1 : 1;
-        $id_number = $prefix . str_pad($num, 4, '0', STR_PAD_LEFT);
-
-        $photoFilename = 'STU_' . time() . '_' . mt_rand(1000,9999) . '.jpg';
-
-        // ===== INSERT =====
+        /* ---- INSERT (NO ID NUMBER YET) ---- */
         $stmtInsert = $pdo->prepare("
             INSERT INTO register
-            (lrn, full_name, id_number, grade, strand, course, home_address, guardian_name, guardian_contact, photo, photo_blob, created_at)
-            VALUES (:lrn, :full_name, :id_number, :grade, :strand, :course, :home_address, :guardian_name, :guardian_contact, :photo, :photo_blob, NOW())
+            (lrn, full_name, id_number, grade, strand, course, email,
+             home_address, guardian_name, guardian_contact,
+             photo, photo_blob, created_at, status, email_verified)
+            VALUES
+            (:lrn, :full_name, NULL, :grade, :strand, :course, :email,
+             :home_address, :guardian_name, :guardian_contact,
+             :photo, :photo_blob, NOW(), 'pending', true)
         ");
 
-        $stmtInsert->bindValue(':lrn', $lrn);
-        $stmtInsert->bindValue(':full_name', $enrolled['full_name']);
-        $stmtInsert->bindValue(':id_number', $id_number);
-        $stmtInsert->bindValue(':grade', $level==='junior' ? $inputValue : null);
-        $stmtInsert->bindValue(':strand', $level==='senior' ? $inputValue : null);
-        $stmtInsert->bindValue(':course', $level==='college'? $inputValue : null);
-        $stmtInsert->bindValue(':home_address', $home_address);
-        $stmtInsert->bindValue(':guardian_name', $guardian_name);
-        $stmtInsert->bindValue(':guardian_contact', $guardian_contact);
-        $stmtInsert->bindValue(':photo', $photoFilename);
-        $stmtInsert->bindValue(':photo_blob', $photo_blob, PDO::PARAM_LOB);
+        $stmtInsert->bindParam(':lrn',$lrn);
+        $stmtInsert->bindParam(':full_name',$full_name);
+        $stmtInsert->bindParam(':grade',$grade);
+        $stmtInsert->bindParam(':strand',$strand);
+        $stmtInsert->bindParam(':course',$course);
+        $stmtInsert->bindParam(':email',$email);
+        $stmtInsert->bindParam(':home_address',$home_address);
+        $stmtInsert->bindParam(':guardian_name',$guardian_name);
+        $stmtInsert->bindParam(':guardian_contact',$guardian_contact);
+        $stmtInsert->bindParam(':photo',$photoFilename);
+        $stmtInsert->bindParam(':photo_blob',$photo_blob, PDO::PARAM_LOB);
 
         $stmtInsert->execute();
 
         $pdo->commit();
 
+        unset($_SESSION['otp'][$email]);
+
         send_json([
             'success'=>true,
-            'msg'=>'Successfully Registered!',
-            'id_number'=>$id_number,
-            'photo_base64'=>$original_base64
+            'msg'=>'Registration submitted. Waiting for admin approval.'
         ]);
 
-    } catch (Exception $e) {
-
-        if($pdo->inTransaction()){
-            $pdo->rollBack();
-        }
-
+    }catch(Exception $e){
         send_json([
             'success'=>false,
-            'msg'=>'Server Error: '.$e->getMessage()
+            'msg'=>'Server error: '.$e->getMessage()
         ]);
     }
 }
 ?>
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -163,7 +225,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Student Registration</title>
 <style>
-/* ========== BASIC STYLING ========== */
+/* ===== CSS STYLING ===== */
 body{margin:0;font-family:"Segoe UI",Arial,sans-serif;background:#f0f4ff;display:flex;justify-content:center;padding:20px;}
 .main{width:100%;max-width:600px;}
 .topbar{width: 100%;background:white;text-align:center;margin-bottom:20px;}
@@ -181,36 +243,11 @@ body{margin:0;font-family:"Segoe UI",Arial,sans-serif;background:#f0f4ff;display
 .card button{margin-top:10px;width:100%;padding:14px;border:none;border-radius:12px;background:#002b80;color:white;font-weight:600;font-size:16px;cursor:pointer}
 .card button:hover{background:#1f2857}
 #popupMsg{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#28a745;color:white;padding:20px;border-radius:12px;font-weight:600;display:none;text-align:center;min-width:220px;max-width:90%;}
-
-.enrollment-status{
-    font-size:13px;
-    margin-top:-10px;
-    margin-bottom:10px;
-    font-weight:600;
-}
-
-.status-success{
-    color:#28a745;
-}
-
-.status-error{
-    color:#dc3545;
-}
-
-.status-checking{
-    color:#ffc107;
-}
-
-.photoPreview {
-    display: none;
-    margin: 10px auto;
-    width: 150px;
-    height: 200px;
-    object-fit: cover;
-    border-radius: 10px;
-    border: 1px solid #ccc;
-}
-
+.enrollment-status{font-size:13px;margin-top:-10px;margin-bottom:10px;font-weight:600;}
+.status-success{color:#28a745;}
+.status-error{color:#dc3545;}
+.status-checking{color:#ffc107;}
+.photoPreview{display:none;margin:10px auto;width:150px;height:200px;object-fit:cover;border-radius:10px;border:1px solid #ccc;}
 .tabs{display:flex;justify-content:center;margin-bottom:15px;gap:10px;}
 .tab-btn{flex:1;background-color:#3498db;color:white;border:none;padding:10px 0;border-radius:8px 8px 0 0;cursor:pointer;font-weight:600;transition:0.2s;}
 .tab-btn:hover{background-color:#5dade2;}
@@ -227,12 +264,11 @@ body{margin:0;font-family:"Segoe UI",Arial,sans-serif;background:#f0f4ff;display
 </div>
 
 <div class="tabs">
-  <button class="tab-btn active" data-target="juniorHigh">Junior High</button>
-  <button class="tab-btn" data-target="seniorHigh">Senior High</button>
-  <button class="tab-btn" data-target="college">College</button>
+<button class="tab-btn active" data-target="juniorHigh">Junior High</button>
+<button class="tab-btn" data-target="seniorHigh">Senior High</button>
+<button class="tab-btn" data-target="college">College</button>
 </div>
 
-<!-- ================= FORMS ================= -->
 <?php
 $forms = [
   'junior'=>['label'=>'Register Junior High Student','select'=>'grade','options'=>['Grade 7','Grade 8','Grade 9','Grade 10']],
@@ -245,6 +281,17 @@ foreach($forms as $level=>$f){
   echo '<div class="card reg-form'.($level==='junior'?' active':'').'" id="'.$id.'">';
   echo '<h3>'.$f['label'].'</h3>';
   echo '<form class="reg-form-inner" data-level="'.$level.'">';
+  echo '<div class="form-group" style="display:flex;align-items:center;gap:10px;">
+        <input type="email" name="email" placeholder=" " required pattern=".+@gmail\.com$">
+        <label>Gmail Address</label>
+        <button type="button" class="otp-btn">Get OTP</button>
+    </div>
+
+    <div class="form-group otp-verification" style="display:none;flex-direction:column;">
+        <input type="text" name="otp" placeholder="Enter OTP">
+        <button type="button" class="verify-otp-btn">Verify OTP</button>
+        <span class="otp-msg"></span>
+    </div>';
   echo '<div class="form-group"><input type="text" name="lrn" placeholder=" " required><label>LRN</label></div>';
   echo '<div class="enrollment-status"></div>';
   echo '<div class="form-group"><input type="text" name="full_name" placeholder=" " required><label>Full Name</label></div>';
@@ -258,162 +305,150 @@ foreach($forms as $level=>$f){
   echo '<button type="submit">Register</button></form></div>';
 }
 ?>
-
 <div id="popupMsg"></div>
 </div>
 
-<!-- ================= JS ================= -->
 <script>
-// ===== TAB SWITCH =====
-const tabs = document.querySelectorAll('.tab-btn');
-const formsEl = document.querySelectorAll('.reg-form');
-const registeredLRNs = new Map();
+document.addEventListener('DOMContentLoaded', () => {
+    // ===== TAB SWITCHING =====
+    const tabs = document.querySelectorAll('.tab-btn');
+    const formsEl = document.querySelectorAll('.reg-form');
 
-tabs.forEach(tab=>tab.addEventListener('click',()=>{
-  tabs.forEach(t=>t.classList.remove('active'));
-  formsEl.forEach(f=>f.classList.remove('active'));
-  tab.classList.add('active');
-  document.getElementById(tab.dataset.target+'Form').classList.add('active');
-}));
+    tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            // Remove active from all tabs and forms
+            tabs.forEach(t => t.classList.remove('active'));
+            formsEl.forEach(f => f.classList.remove('active'));
 
-document.querySelectorAll('.reg-form-inner').forEach(form=>{
-  const photoInput = form.querySelector('.photoInput');
-  const preview = form.querySelector('.photoPreview');
-  const lrnInput = form.querySelector('input[name="lrn"]');
-  const statusDiv = form.querySelector('.enrollment-status');
-  const submitBtn = form.querySelector('button');
-  const allInputs = Array.from(form.querySelectorAll('input, select'));
-  const editableInputs = allInputs.filter(i=>i.name!=='lrn'&&i.type!=='file');
+            // Add active to clicked tab
+            tab.classList.add('active');
 
-  let resizedPhotoBase64 = '';
-  let timer=null;
-  preview.style.display='none';
+            // Add active to corresponding form
+            const targetForm = document.getElementById(tab.dataset.target + 'Form');
+            if (targetForm) targetForm.classList.add('active');
+        });
+    });
 
-  // ===== PHOTO RESIZE =====
-  photoInput.addEventListener('change',e=>{
-    const file = e.target.files[0];
-    if(!file){resetPhoto(); return;}
-    const reader = new FileReader();
-    reader.onload=ev=>{
-      const img=new Image();
-      img.onload=()=>{
-        let w=img.width,h=img.height,maxW=800,maxH=1000;
-        if(w>maxW){h*=maxW/w;w=maxW;}
-        if(h>maxH){w*=maxH/h;h=maxH;}
-        const canvas=document.createElement('canvas');
-        canvas.width=w; canvas.height=h;
-        canvas.getContext('2d').drawImage(img,0,0,w,h);
-        resizedPhotoBase64 = canvas.toDataURL('image/jpeg',0.85);
-        preview.src=resizedPhotoBase64;
-        preview.style.display='block';
-      };
-      img.src=ev.target.result;
-    };
-    reader.readAsDataURL(file);
-  });
-  function resetPhoto(){preview.src='';preview.style.display='none';resizedPhotoBase64='';photoInput.value='';}
-  function setStatus(msg,type){statusDiv.innerHTML=msg;statusDiv.className='enrollment-status status-'+type;}
-  function clearStatus(){statusDiv.innerHTML='';statusDiv.className='enrollment-status';}
-  function resetEditableInputs(){editableInputs.forEach(i=>{i.value='';i.readOnly=false;i.disabled=false;});}
-  function capitalize(s){return s.charAt(0).toUpperCase()+s.slice(1);}
-  function highlightTab(level){tabs.forEach(t=>t.classList.remove('active'));formsEl.forEach(f=>f.classList.remove('active'));const t=document.querySelector(`.tab-btn[data-target="${level}"]`);const f=document.getElementById(level+'Form');if(t&&f){t.classList.add('active');f.classList.add('active');}}
+    // ===== FORM HANDLING =====
+    document.querySelectorAll('.reg-form-inner').forEach(form => {
+        const photoInput = form.querySelector('.photoInput');
+        const preview = form.querySelector('.photoPreview');
+        const otpBtn = form.querySelector('.otp-btn');
+        const otpSection = form.querySelector('.otp-verification');
+        const verifyBtn = form.querySelector('.verify-otp-btn');
+        const otpInput = form.querySelector('input[name="otp"]');
+        const otpMsg = form.querySelector('.otp-msg');
+        const statusDiv = form.querySelector('.enrollment-status');
+        let resizedPhotoBase64 = '';
+        let otpVerified = false;
 
-    const levelFieldMap = {junior:'grade', senior:'strand', college:'course'};
-    const fieldName = levelFieldMap[form.dataset.level];
-
-function checkEnrollment(){
-    clearTimeout(timer);
-
-    const lrn = lrnInput.value.trim();
-    const fullName = form.querySelector('input[name="full_name"]').value.trim();
-    const fieldValue = form.querySelector(`select[name="${fieldName}"]`)?.value || '';
-
-    // ✅ STOP EARLY CHECKING
-    if(
-        lrn.length < 12 ||          // typical LRN length
-        fullName.length < 5 ||      // prevent 1-letter checking
-        fieldValue === ''           // require grade/strand/course
-    ){
-        clearStatus();
-        return;
-    }
-
-    statusDiv.innerHTML='Checking enrollment...';
-    statusDiv.className='enrollment-status status-checking';
-
-    timer=setTimeout(async()=>{
-        try{
-            const res=await fetch(
-                `checkEnrolled.php?lrn=${encodeURIComponent(lrn)}&full_name=${encodeURIComponent(fullName)}&level=${form.dataset.level}&${fieldName}=${encodeURIComponent(fieldValue)}`
-            );
-
-            const data=await res.json();
-
-            if(!data.success){
-                setStatus(data.msg,'error');
-
-                // 🔓 unlock LRN if failed
-                lrnInput.readOnly = false;
-
-            }else{
-                setStatus('✔ Student is officially enrolled','success');
-
-                // 🔒 lock LRN when valid
-                lrnInput.readOnly = true;
+        // ===== PHOTO PREVIEW & RESIZE =====
+        photoInput.addEventListener('change', e => {
+            const file = e.target.files[0];
+            if (!file) {
+                preview.src = '';
+                preview.style.display = 'none';
+                resizedPhotoBase64 = '';
+                return;
             }
+            const reader = new FileReader();
+            reader.onload = ev => {
+                const img = new Image();
+                img.onload = () => {
+                    let w = img.width, h = img.height, maxW = 800, maxH = 1000;
+                    if (w > maxW) { h *= maxW / w; w = maxW; }
+                    if (h > maxH) { w *= maxH / h; h = maxH; }
+                    const canvas = document.createElement('canvas');
+                    canvas.width = w; canvas.height = h;
+                    canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+                    resizedPhotoBase64 = canvas.toDataURL('image/jpeg', 0.85);
+                    preview.src = resizedPhotoBase64;
+                    preview.style.display = 'block';
+                };
+                img.src = ev.target.result;
+            };
+            reader.readAsDataURL(file);
+        });
 
-        }catch(err){
-            console.error(err);
-            setStatus('Server error','error');
-        }
-    },500);
-}
+        // ===== OTP REQUEST =====
+        otpBtn.addEventListener('click', () => {
+            const emailValue = form.querySelector('input[name="email"]').value.trim();
+            if (!emailValue) {
+                showPopup('Enter Gmail first');
+                return;
+            }
+            showPopup('Sending OTP...');
+            otpSection.style.display = 'flex';
+            fetch('', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({ otp_request: 1, email: emailValue })
+            })
+            .then(r => r.json())
+            .then(d => showPopup(d.msg))
+            .catch(() => showPopup('Error sending OTP'));
+        });
 
-lrnInput.addEventListener('input', checkEnrollment);
-form.querySelector('input[name="full_name"]').addEventListener('blur', checkEnrollment);
-form.querySelector(`select[name="${fieldName}"]`).addEventListener('change', checkEnrollment);
+        // ===== OTP VERIFY =====
+        verifyBtn.addEventListener('click', () => {
+            const emailValue = form.querySelector('input[name="email"]').value.trim();
+            const otpValue = otpInput.value.trim();
+            if (!otpValue) { showPopup('Enter OTP first'); return; }
+            showPopup('Verifying OTP...');
+            fetch('', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({ otp_verify: 1, email: emailValue, otp: otpValue })
+            })
+            .then(r => r.json())
+            .then(d => {
+                showPopup(d.msg);
+                if (d.success) {
+                    otpVerified = true;
+                    otpSection.style.display = 'none';
+                    statusDiv.textContent = 'OTP verified ✅';
+                    statusDiv.className = 'enrollment-status status-success';
+                }
+            })
+            .catch(() => showPopup('Error verifying OTP'));
+        });
 
-  // ===== FORM SUBMIT =====
-  form.addEventListener('submit',async e=>{
-    e.preventDefault();
-    const lrn=lrnInput.value.trim();
-    if(!resizedPhotoBase64){setStatus('Please select a photo.','error');return;}
-    if(!statusDiv.classList.contains('status-success')){setStatus('Student must be enrolled before registering.','error');return;}
-    if(registeredLRNs.has(lrn)){setStatus(`This student is already registered under "${capitalize(registeredLRNs.get(lrn))}" tab.`,'error');highlightTab(registeredLRNs.get(lrn));return;}
-    submitBtn.disabled=true;submitBtn.innerText='Processing...';
-    const fd=new FormData();fd.append('level',form.dataset.level);allInputs.forEach(i=>{if(i.name&&i.type!=='file')fd.append(i.name,i.value);});fd.append('photo_base64',resizedPhotoBase64);
-    try{
-      const res=await fetch('index.php',{method:'POST',body:fd});
-      const data=await res.json();
-      if(data.success){showPopup(`✔ Registration Successful!<br>ID: ${data.id_number}`, "success");preview.src=data.photo_base64;preview.style.display='block';registeredLRNs.set(lrn,form.dataset.level);resetPhoto();resetEditableInputs();allInputs.forEach(i=>{
-    if(i.tagName==='SELECT'){
-        i.selectedIndex=0;
-        i.disabled=false;
+        // ===== FORM SUBMISSION =====
+        form.addEventListener('submit', e => {
+            e.preventDefault();
+            if (!otpVerified) { showPopup('Verify OTP first'); return; }
+
+            const formData = new FormData(form);
+            formData.append('photo_base64', resizedPhotoBase64);
+            formData.append('level', form.dataset.level);
+            formData.append('otp', otpInput.value.trim());
+
+            fetch('', { method: 'POST', body: formData })
+                .then(r => r.json())
+                .then(d => {
+                    showPopup(d.msg);
+                    if (d.success) {
+                        form.reset();
+                        preview.src = '';
+                        preview.style.display = 'none';
+                        otpVerified = false;
+                        statusDiv.textContent = '';
+                        otpSection.style.display = 'none';
+                        otpMsg.textContent = '';
+                    }
+                })
+                .catch(() => statusDiv.textContent = 'Server error');
+        });
+    });
+
+    // ===== POPUP FUNCTION =====
+    function showPopup(msg) {
+        const p = document.getElementById('popupMsg');
+        p.textContent = msg;
+        p.style.display = 'block';
+        setTimeout(() => { p.style.display = 'none'; }, 4000);
     }
-    if(i.readOnly) i.readOnly=false;});lrnInput.value='';
-    lrnInput.readOnly = false;setTimeout(clearStatus,5000);
-    } else {showPopup(data.msg,'error');}
-    }catch(err){console.error(err);setStatus('Submission failed. Please try again.','error');}
-    submitBtn.disabled=false;submitBtn.innerText='Register';
-  });
 });
-
-function showPopup(message, type="success"){
-    const popup = document.getElementById("popupMsg");
-
-    popup.innerHTML = message;
-    popup.style.display = "block";
-
-    if(type === "success"){
-        popup.style.background = "#28a745";
-    } else {
-        popup.style.background = "#dc3545";
-    }
-
-    setTimeout(()=>{
-        popup.style.display = "none";
-    }, 4000);
-}
 </script>
 </body>
 </html>

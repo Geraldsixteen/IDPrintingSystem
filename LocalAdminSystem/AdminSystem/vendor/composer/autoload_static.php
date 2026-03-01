@@ -17,11 +17,13 @@ class ComposerStaticInit175f515b2811e085f3258b59792b25af
     public static $prefixDirsPsr4 = array (
         'PhpOffice\\PhpWord\\' => 
         array (
-            0 => __DIR__ . '/..' . '/phpoffice/phpword/src/PhpWord',
+            0 => __DIR__ . '/../..' . '/src/PhpWord',
+            1 => __DIR__ . '/..' . '/phpoffice/phpword/src/PhpWord',
         ),
         'PhpOffice\\Math\\' => 
         array (
-            0 => __DIR__ . '/..' . '/phpoffice/math/src/Math',
+            0 => __DIR__ . '/../..' . '/src/Math',
+            1 => __DIR__ . '/..' . '/phpoffice/math/src/Math',
         ),
     );
 

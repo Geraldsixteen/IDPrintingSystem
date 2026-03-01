@@ -14,3 +14,8 @@ docker-compose.override.yml
 
 # Ignore sensitive database credentials
 LocalAdminSystem/Config/database.php
+
+# .env
+MAIL_USERNAME=geraldpanis20@gmail.com
+MAIL_PASSWORD=oohlslciywgmokfv
+MAIL_FROM=geraldpanis20@gmail.com

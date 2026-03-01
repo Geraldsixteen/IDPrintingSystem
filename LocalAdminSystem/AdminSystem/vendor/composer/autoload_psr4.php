@@ -6,6 +6,6 @@ $vendorDir = dirname(__DIR__);
 $baseDir = dirname($vendorDir);
 
 return array(
-    'PhpOffice\\PhpWord\\' => array($vendorDir . '/phpoffice/phpword/src/PhpWord'),
-    'PhpOffice\\Math\\' => array($vendorDir . '/phpoffice/math/src/Math'),
+    'PhpOffice\\PhpWord\\' => array($baseDir . '/src/PhpWord', $vendorDir . '/phpoffice/phpword/src/PhpWord'),
+    'PhpOffice\\Math\\' => array($baseDir . '/src/Math', $vendorDir . '/phpoffice/math/src/Math'),
 );
