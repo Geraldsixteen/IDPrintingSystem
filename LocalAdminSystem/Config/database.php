@@ -12,9 +12,9 @@ $pass = getenv('DB_PASS');
 if (!$host) {
     $host = "postgres.railway.internal";
     $port = "5432";
-    $db   = "id_printing_db";
+    $db   = "railway";
     $user = "postgres";
-    $pass = "yNkOQvCxCrvjiRpqdfRDfqhqWuxmrcGH";
+    $pass = "YyVzOGHYPIKIIStLogTRBImXpiOTkPEZ";
 }
 
 $dsn = "pgsql:host=$host;port=$port;dbname=$db";
