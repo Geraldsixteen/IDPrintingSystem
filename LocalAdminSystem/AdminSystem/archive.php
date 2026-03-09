@@ -29,62 +29,36 @@ if(isset($_POST['toggle_status'])){
 }
 
 /* ================= RESTORE SINGLE ================= */
-
 if(isset($_POST['restore_id'])){
-
     $id = intval($_POST['restore_id']);
-
     $pdo->beginTransaction();
-
     try{
-
         $stmt = $pdo->prepare("SELECT * FROM archive WHERE id=?");
         $stmt->execute([$id]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if($row){
-
             $check = $pdo->prepare("SELECT id FROM register WHERE id_number=?");
             $check->execute([$row['id_number']]);
 
             if(!$check->fetch()){
-
                 $insert = $pdo->prepare("
                     INSERT INTO register
                     (
-                        lrn,
-                        full_name,
-                        id_number,
-                        grade,
-                        strand,
-                        course,
-                        home_address,
-                        guardian_name,
-                        guardian_contact,
-                        photo,
-                        photo_blob,
-                        created_at,
-                        restored_at
+                        lrn, full_name, id_number, grade, strand, course,
+                        home_address, guardian_name, guardian_contact,
+                        photo, photo_blob, created_at, restored_at
                     )
                     VALUES
-                    (
-                        ?,?,?,?,?,?,?,?,?,?,?,?,NOW()
-                    )
+                    (?,?,?,?,?,?,?,?,?,?,?,?,NOW())
                 ");
 
                 $insert->execute([
-                    $row['lrn'],
-                    $row['full_name'],
-                    $row['id_number'],
-                    $row['grade'],
-                    $row['strand'],
-                    $row['course'],
-                    $row['home_address'],
-                    $row['guardian_name'],
-                    $row['guardian_contact'],
-                    $row['photo'],
-                    $row['photo_blob'],
-                    $row['created_at']   // ⭐ ORIGINAL REGISTER DATE
+                    $row['lrn'], $row['full_name'], $row['id_number'],
+                    $row['grade'], $row['strand'], $row['course'],
+                    $row['home_address'], $row['guardian_name'],
+                    $row['guardian_contact'], $row['photo'], $row['photo_blob'],
+                    $row['created_at']
                 ]);
             }
 
@@ -92,17 +66,14 @@ if(isset($_POST['restore_id'])){
         }
 
         $pdo->commit();
-
-        header("Location: archive.php");
+        header("Location: records.php?restored=1");
         exit;
 
-    }catch(Exception $e){
-
+    } catch(Exception $e){
         $pdo->rollBack();
         die("Restore failed: ".$e->getMessage());
     }
 }
-
 
 // ================= FILTERS =================
 $search = $_GET['search'] ?? '';

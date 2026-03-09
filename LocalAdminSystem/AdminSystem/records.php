@@ -152,6 +152,11 @@ img { width:70px; height:90px; object-fit:cover; border-radius:6px; border:2px s
         ✅ Record successfully deleted!
     </div>
 <?php endif; ?>
+<?php if(isset($_GET['restored'])): ?>
+    <div class="success-msg">
+        ✅ Record successfully restored!
+    </div>
+<?php endif; ?>
             <!-- Filters -->
             <div class="filters">
                 <!-- Junior High -->
@@ -243,11 +248,6 @@ img { width:70px; height:90px; object-fit:cover; border-radius:6px; border:2px s
                                     onclick="return confirmDownload('<?= htmlspecialchars($row['full_name']) ?>');" target="_blank">
                                         <button class="edit-btn" style="background:#3498db;">⬇️ Download</button>
                                     </a>
-
-                                <!-- Delete Button -->
-                                <a href="delete.php?id=<?= $row['id'] ?>" onclick="return confirm('⚠ Are you sure you want to delete <?= htmlspecialchars($row['full_name']) ?>?');">
-                                    <button class="edit-btn" style="background:#e74c3c;">🗑️ Delete</button>
-                                </a>
                             </td>
                         </tr>
                         <?php endforeach; ?>

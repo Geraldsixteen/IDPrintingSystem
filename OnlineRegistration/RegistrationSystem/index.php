@@ -33,7 +33,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     /* ========= OTP REQUEST ========= */
     if(isset($_POST['otp_request'], $_POST['email'])){
 
-        $email = trim($_POST['email']);
+        $email = strtolower(trim($_POST['email']));
 
         if(!filter_var($email, FILTER_VALIDATE_EMAIL) || !str_ends_with($email,'@gmail.com')){
             send_json(['success'=>false,'msg'=>'Enter a valid Gmail account.']);
@@ -43,9 +43,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $otp_expiry = time() + 300; // 5 minutes
 
         $_SESSION['otp'][$email] = [
-            'code' => $otp_code,
+            'code' => password_hash($otp_code, PASSWORD_DEFAULT),
             'expiry' => $otp_expiry,
-            'verified' => false
+            'verified' => false,
+            'attempts' => 0
         ];
 
         try{
@@ -83,7 +84,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     /* ========= OTP VERIFY ========= */
     if(isset($_POST['otp_verify'], $_POST['email'], $_POST['otp'])){
 
-        $email = trim($_POST['email']);
+        $email = strtolower(trim($_POST['email']));
         $otp_input = trim($_POST['otp']);
 
         if(!isset($_SESSION['otp'][$email])){
@@ -94,14 +95,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if(time() > $otpData['expiry']){
             unset($_SESSION['otp'][$email]);
-            send_json(['success'=>false,'msg'=>'OTP expired.']);
+            send_json(['success'=>false,'msg'=>'OTP expired. Request a new one.']);
         }
 
-        if($otp_input !== $otpData['code']){
+        if($otpData['attempts'] >= 5){
+            unset($_SESSION['otp'][$email]);
+            send_json(['success'=>false,'msg'=>'Too many OTP attempts. Request new OTP.']);
+        }
+
+        if(!password_verify($otp_input, $otpData['code'])){
+            $_SESSION['otp'][$email]['attempts']++;
             send_json(['success'=>false,'msg'=>'Invalid OTP.']);
         }
 
         $_SESSION['otp'][$email]['verified'] = true;
+        session_regenerate_id(true);
 
         send_json(['success'=>true,'msg'=>'OTP verified successfully.']);
     }
@@ -112,7 +120,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $level = $_POST['level'] ?? '';
         $lrn = trim($_POST['lrn'] ?? '');
         $full_name = trim($_POST['full_name'] ?? '');
-        $email = trim($_POST['email'] ?? '');
+        $email = strtolower(trim($_POST['email'] ?? ''));
         $home_address = trim($_POST['home_address'] ?? '');
         $guardian_name = trim($_POST['guardian_name'] ?? '');
         $guardian_contact = trim($_POST['guardian_contact'] ?? '');
@@ -225,35 +233,294 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Student Registration</title>
 <style>
-/* ===== CSS STYLING ===== */
-body{margin:0;font-family:"Segoe UI",Arial,sans-serif;background:#f0f4ff;display:flex;justify-content:center;padding:20px;}
-.main{width:100%;max-width:600px;}
-.topbar{width: 100%;background:white;text-align:center;margin-bottom:20px;}
-.topbar img{width:80px;display:block;margin:0 auto 10px;}
-.topbar h3{margin:0;color:#002b80;}
-.card{background:#fff;padding:25px;border-radius:15px;box-shadow:0 6px 20px rgba(0,0,0,0.1);}
-.card h3{text-align:center;margin-bottom:20px;color:#002b80;}
-.form-group{position:relative;margin-bottom:18px;}
-.form-group input,.form-group select{width:95%;padding:14px;border-radius:10px;border:1px solid #ccc;font-size:14px;background:transparent;}
-.form-group label{position:absolute;left:12px;top:14px;color:#999;font-size:14px;pointer-events:none;transition:.2s}
+/* ===== GLOBAL ===== */
+*{
+box-sizing:border-box;
+}
+
+body{
+margin:0;
+font-family:"Segoe UI",Arial,sans-serif;
+background:#f0f4ff;
+display:flex;
+justify-content:center;
+padding:20px;
+}
+
+.main{
+width:100%;
+max-width:650px;
+}
+
+/* ===== TOPBAR ===== */
+.topbar{
+width:100%;
+background:white;
+text-align:center;
+margin-bottom:20px;
+padding:10px;
+border-radius:12px;
+}
+
+.topbar img{
+width:80px;
+display:block;
+margin:0 auto 10px;
+}
+
+.topbar h3{
+margin:0;
+color:#002b80;
+}
+
+/* ===== CARD ===== */
+.card{
+background:#fff;
+padding:25px;
+border-radius:15px;
+box-shadow:0 6px 20px rgba(0,0,0,0.1);
+}
+
+.card h3{
+text-align:center;
+margin-bottom:20px;
+color:#002b80;
+}
+
+/* ===== FORM ===== */
+.form-group{
+position:relative;
+margin-bottom:18px;
+width:100%;
+}
+
+.form-group input,
+.form-group select{
+width:100%;
+padding:14px;
+border-radius:10px;
+border:1px solid #ccc;
+font-size:14px;
+background:transparent;
+}
+
+/* ===== FLOAT LABEL ===== */
+.form-group label{
+position:absolute;
+left:12px;
+top:14px;
+color:#999;
+font-size:14px;
+pointer-events:none;
+transition:.2s;
+background:white;
+}
+
 .form-group input:focus+label,
 .form-group input:not(:placeholder-shown)+label,
 .form-group select:focus+label,
-.form-group select:not([value=""])+label{top:-8px;left:10px;font-size:12px;color:#002b80;background:#fff;padding:0 5px}
-.card button{margin-top:10px;width:100%;padding:14px;border:none;border-radius:12px;background:#002b80;color:white;font-weight:600;font-size:16px;cursor:pointer}
-.card button:hover{background:#1f2857}
-#popupMsg{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#28a745;color:white;padding:20px;border-radius:12px;font-weight:600;display:none;text-align:center;min-width:220px;max-width:90%;}
-.enrollment-status{font-size:13px;margin-top:-10px;margin-bottom:10px;font-weight:600;}
-.status-success{color:#28a745;}
-.status-error{color:#dc3545;}
-.status-checking{color:#ffc107;}
-.photoPreview{display:none;margin:10px auto;width:150px;height:200px;object-fit:cover;border-radius:10px;border:1px solid #ccc;}
-.tabs{display:flex;justify-content:center;margin-bottom:15px;gap:10px;}
-.tab-btn{flex:1;background-color:#3498db;color:white;border:none;padding:10px 0;border-radius:8px 8px 0 0;cursor:pointer;font-weight:600;transition:0.2s;}
-.tab-btn:hover{background-color:#5dade2;}
-.tab-btn.active{background-color:#002b80;}
-.reg-form{display:none;}
-.reg-form.active{display:block;}
+.form-group select:not([value=""])+label{
+top:-8px;
+left:10px;
+font-size:12px;
+color:#002b80;
+padding:0 5px;
+}
+
+/* ===== BUTTON ===== */
+.card button{
+margin-top:10px;
+width:100%;
+padding:14px;
+border:none;
+border-radius:12px;
+background:#002b80;
+color:white;
+font-weight:600;
+font-size:16px;
+cursor:pointer;
+}
+
+.card button:hover{
+background:#1f2857;
+}
+
+/* ===== OTP BUTTON INLINE ===== */
+.form-group.inline{
+display:flex;
+gap:10px;
+align-items:center;
+}
+
+.form-group.inline input{
+flex:1;
+}
+
+.form-group.inline button{
+width:auto;
+padding:12px 16px;
+white-space:nowrap;
+}
+
+/* ===== OTP BOXES ===== */
+.otp-boxes{
+display:flex;
+justify-content:center;
+align-items:center;
+gap:10px;
+margin:10px 0 15px;
+flex-wrap:wrap;
+}
+
+.otp-boxes input{
+width:48px;
+height:58px;
+text-align:center;
+font-size:24px;
+font-weight:700;
+border:2px solid #d0d0d0;
+border-radius:10px;
+}
+
+.otp-boxes input:focus{
+border-color:#002b80;
+}
+
+/* ===== PHOTO ===== */
+.photoPreview{
+display:none;
+margin:10px auto;
+width:150px;
+height:200px;
+object-fit:cover;
+border-radius:10px;
+border:1px solid #ccc;
+}
+
+/* ===== TABS ===== */
+.tabs{
+display:flex;
+justify-content:center;
+margin-bottom:15px;
+gap:10px;
+flex-wrap:wrap;
+}
+
+.tab-btn{
+flex:1;
+background:#3498db;
+color:white;
+border:none;
+padding:10px;
+border-radius:8px;
+cursor:pointer;
+font-weight:600;
+min-width:120px;
+}
+
+.tab-btn.active{
+background:#002b80;
+}
+
+/* ===== TAB FORM CONTROL ===== */
+.reg-form{
+display:none;
+opacity:0;
+transition:0.3s;
+}
+
+.reg-form.active{
+display:block;
+opacity:1;
+}
+
+/* ===== POPUP ===== */
+#popupMsg{
+position:fixed;
+top:50%;
+left:50%;
+transform:translate(-50%,-50%);
+background:#28a745;
+color:white;
+padding:20px;
+border-radius:12px;
+font-weight:600;
+display:none;
+text-align:center;
+min-width:220px;
+max-width:90%;
+z-index:999;
+}
+
+/* =================================
+   MOBILE RESPONSIVE
+================================= */
+
+@media (max-width:768px){
+
+body{
+padding:10px;
+}
+
+.card{
+padding:18px;
+}
+
+.topbar img{
+width:60px;
+}
+
+.topbar h3{
+font-size:18px;
+}
+
+.tab-btn{
+font-size:14px;
+padding:8px;
+}
+
+.otp-boxes input{
+width:40px;
+height:50px;
+font-size:20px;
+}
+
+}
+
+/* ===== SMALL PHONES ===== */
+
+@media (max-width:480px){
+
+.form-group.inline{
+flex-direction:column;
+align-items:stretch;
+}
+
+.form-group.inline button{
+width:100%;
+}
+
+.otp-boxes{
+gap:6px;
+}
+
+.otp-boxes input{
+width:36px;
+height:46px;
+font-size:18px;
+}
+
+.photoPreview{
+width:120px;
+height:160px;
+}
+
+.card button{
+font-size:15px;
+padding:12px;
+}
+
+}
 </style>
 </head>
 <body>
@@ -281,19 +548,25 @@ foreach($forms as $level=>$f){
   echo '<div class="card reg-form'.($level==='junior'?' active':'').'" id="'.$id.'">';
   echo '<h3>'.$f['label'].'</h3>';
   echo '<form class="reg-form-inner" data-level="'.$level.'">';
-  echo '<div class="form-group" style="display:flex;align-items:center;gap:10px;">
+  echo '<div class="form-group inline">
         <input type="email" name="email" placeholder=" " required pattern=".+@gmail\.com$">
         <label>Gmail Address</label>
         <button type="button" class="otp-btn">Get OTP</button>
     </div>
 
     <div class="form-group otp-verification" style="display:none;flex-direction:column;">
-        <input type="text" name="otp" placeholder="Enter OTP">
+        <div class="otp-boxes">
+            <input type="text" maxlength="1">
+            <input type="text" maxlength="1">
+            <input type="text" maxlength="1">
+            <input type="text" maxlength="1">
+            <input type="text" maxlength="1">
+            <input type="text" maxlength="1">
+        </div>
         <button type="button" class="verify-otp-btn">Verify OTP</button>
         <span class="otp-msg"></span>
     </div>';
   echo '<div class="form-group"><input type="text" name="lrn" placeholder=" " required><label>LRN</label></div>';
-  echo '<div class="enrollment-status"></div>';
   echo '<div class="form-group"><input type="text" name="full_name" placeholder=" " required><label>Full Name</label></div>';
   echo '<div class="form-group"><select name="'.$f['select'].'" required><option value="" hidden></option>';
   foreach($f['options'] as $opt) echo '<option value="'.$opt.'">'.$opt.'</option>';
@@ -336,9 +609,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const otpBtn = form.querySelector('.otp-btn');
         const otpSection = form.querySelector('.otp-verification');
         const verifyBtn = form.querySelector('.verify-otp-btn');
-        const otpInput = form.querySelector('input[name="otp"]');
         const otpMsg = form.querySelector('.otp-msg');
-        const statusDiv = form.querySelector('.enrollment-status');
         let resizedPhotoBase64 = '';
         let otpVerified = false;
 
@@ -370,83 +641,204 @@ document.addEventListener('DOMContentLoaded', () => {
             reader.readAsDataURL(file);
         });
 
-        // ===== OTP REQUEST =====
         otpBtn.addEventListener('click', () => {
-            const emailValue = form.querySelector('input[name="email"]').value.trim();
-            if (!emailValue) {
-                showPopup('Enter Gmail first');
-                return;
-            }
-            showPopup('Sending OTP...');
-            otpSection.style.display = 'flex';
-            fetch('', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: new URLSearchParams({ otp_request: 1, email: emailValue })
+
+        const emailValue = form.querySelector('input[name="email"]').value.trim();
+
+        if (!emailValue) {
+            showPopup("Enter Gmail first", false);
+            return;
+        }
+
+        otpBtn.disabled = true;
+        otpBtn.textContent = "Sending...";
+
+        fetch('',{
+            method:'POST',
+            credentials:'same-origin',
+            headers:{'Content-Type':'application/x-www-form-urlencoded'},
+            body:new URLSearchParams({
+                otp_request:1,
+                email:emailValue
             })
-            .then(r => r.json())
-            .then(d => showPopup(d.msg))
-            .catch(() => showPopup('Error sending OTP'));
+        })
+        .then(r=>r.json())
+        .then(d=>{
+
+            if(d.success){
+
+                showPopup(d.msg, true);
+
+                otpSection.style.display='flex';
+
+                let countdown = 60;
+
+                otpBtn.textContent = "Wait 60s";
+
+                const timer = setInterval(()=>{
+
+                    countdown--;
+
+                    otpBtn.textContent = "Wait " + countdown + "s";
+
+                    if(countdown <= 0){
+                        clearInterval(timer);
+                        otpBtn.disabled = false;
+                        otpBtn.textContent = "Get OTP";
+                    }
+
+                },1000);
+
+            }else{
+
+                otpBtn.disabled = false;
+                otpBtn.textContent = "Get OTP";
+                showPopup(d.msg, false);
+
+            }
+
+        })
+        .catch(()=>{
+            otpBtn.disabled = false;
+            otpBtn.textContent = "Get OTP";
+            showPopup("Error sending OTP", false);
         });
+
+    });
+
+    const otpBoxes = form.querySelectorAll('.otp-boxes input');
+
+    otpBoxes.forEach((box, index) => {
+
+        box.addEventListener('input', () => {
+
+            box.value = box.value.replace(/[^0-9]/g,'');
+
+            if(box.value && otpBoxes[index+1]){
+                otpBoxes[index+1].focus();
+            }
+
+        });
+
+        box.addEventListener('keydown', (e) => {
+
+            if(e.key === "Backspace" && !box.value && otpBoxes[index-1]){
+                otpBoxes[index-1].focus();
+            }
+
+        });
+
+    });
+
+        otpBoxes[0].addEventListener('paste', (e)=>{
+
+        const paste = (e.clipboardData || window.clipboardData).getData('text');
+
+        if(!/^\d{6}$/.test(paste)) return;
+
+        e.preventDefault();
+
+        paste.split('').forEach((num,i)=>{
+            if(otpBoxes[i]){
+                otpBoxes[i].value = num;
+            }
+        });
+
+    });
+
+    function getOtp(){
+        let code='';
+        otpBoxes.forEach(b => code += b.value);
+        return code;
+    }
 
         // ===== OTP VERIFY =====
         verifyBtn.addEventListener('click', () => {
+
             const emailValue = form.querySelector('input[name="email"]').value.trim();
-            const otpValue = otpInput.value.trim();
-            if (!otpValue) { showPopup('Enter OTP first'); return; }
-            showPopup('Verifying OTP...');
+            const otpValue = getOtp();
+
+            if (otpValue.length !== 6) {
+                showPopup('Enter the 6-digit OTP', false);
+                return;
+            }
+
+            showPopup('Verifying OTP...', true);
+
             fetch('', {
                 method: 'POST',
+                credentials: 'same-origin',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: new URLSearchParams({ otp_verify: 1, email: emailValue, otp: otpValue })
+                body: new URLSearchParams({
+                    otp_verify: 1,
+                    email: emailValue,
+                    otp: otpValue
+                })
             })
             .then(r => r.json())
             .then(d => {
-                showPopup(d.msg);
+
+                showPopup(d.msg, d.success);
+
                 if (d.success) {
                     otpVerified = true;
                     otpSection.style.display = 'none';
-                    statusDiv.textContent = 'OTP verified ✅';
-                    statusDiv.className = 'enrollment-status status-success';
                 }
+
             })
             .catch(() => showPopup('Error verifying OTP'));
+
         });
 
         // ===== FORM SUBMISSION =====
         form.addEventListener('submit', e => {
             e.preventDefault();
-            if (!otpVerified) { showPopup('Verify OTP first'); return; }
+            if (!otpVerified) { showPopup('Verify OTP first', false); return; }
 
             const formData = new FormData(form);
             formData.append('photo_base64', resizedPhotoBase64);
             formData.append('level', form.dataset.level);
-            formData.append('otp', otpInput.value.trim());
+            formData.append('otp', getOtp());
 
             fetch('', { method: 'POST', body: formData })
                 .then(r => r.json())
                 .then(d => {
-                    showPopup(d.msg);
+                    showPopup(d.msg, d.success);
                     if (d.success) {
+
                         form.reset();
+
                         preview.src = '';
                         preview.style.display = 'none';
+
                         otpVerified = false;
-                        statusDiv.textContent = '';
                         otpSection.style.display = 'none';
                         otpMsg.textContent = '';
+
+                        otpBoxes.forEach(b => b.value = ''); // clear OTP boxes
                     }
                 })
-                .catch(() => statusDiv.textContent = 'Server error');
+                .catch(() => showPopup('Server error', false));
         });
     });
 
     // ===== POPUP FUNCTION =====
-    function showPopup(msg) {
+    function showPopup(msg, success = true) {
         const p = document.getElementById('popupMsg');
+
         p.textContent = msg;
-        p.style.display = 'block';
-        setTimeout(() => { p.style.display = 'none'; }, 4000);
+
+        if(success){
+            p.style.background = "#28a745"; // green
+        }else{
+            p.style.background = "#dc3545"; // red
+        }
+
+        p.style.display = "block";
+
+        setTimeout(() => {
+            p.style.display = "none";
+        }, 4000);
     }
 });
 </script>

@@ -26,7 +26,11 @@ if(isset($_GET['action'], $_GET['id'])){
             $stmt->execute([':id'=>$id]);
         }
 
-        header("Location: admin-review.php?msg=success");
+        if($action === 'approve'){
+            header("Location: admin-review.php?status=accepted");
+        } else {
+            header("Location: admin-review.php?status=rejected");
+        }
         exit;
     }
 }
@@ -159,8 +163,10 @@ img { width:70px; height:90px; object-fit:cover; border-radius:6px; border:2px s
     <div class="topbar"><span>Pending Registrations</span></div>
     <div class="container">
         <div class="card">
-            <?php if(isset($_GET['msg'])): ?>
-                <div class="success-msg">✅ Action completed successfully!</div>
+            <?php if(isset($_GET['status'])): ?>
+                <div class="success-msg">
+                    ✅ <?= $_GET['status'] === 'accepted' ? 'Student accepted successfully!' : 'Student rejected successfully!' ?>
+                </div>
             <?php endif; ?>
 
             <!-- Filters -->
@@ -235,8 +241,14 @@ img { width:70px; height:90px; object-fit:cover; border-radius:6px; border:2px s
                             </td>
                             <td><?= $s['created_at'] ? date('Y-m-d H:i:s', strtotime($s['created_at'])) : '-' ?></td>
                             <td class="actions">
-                                <a href="?id=<?= $s['id'] ?>&action=approve"><button class="approve-btn">✅ Approve</button></a>
-                                <a href="?id=<?= $s['id'] ?>&action=reject"><button class="reject-btn">❌ Reject</button></a>
+                                <a href="?id=<?= $s['id'] ?>&action=approve" 
+                                onclick="return confirm('✅ Are you sure this student is enrolled on the list?');">
+                                    <button class="approve-btn">✅ Approve</button>
+                                </a>
+                                <a href="?id=<?= $s['id'] ?>&action=reject" 
+                                onclick="return confirm('⚠ Are you sure this student is not on the list?');">
+                                    <button class="reject-btn">❌ Reject</button>
+                                </a>
                             </td>
                         </tr>
                         <?php endforeach; ?>
@@ -249,6 +261,18 @@ img { width:70px; height:90px; object-fit:cover; border-radius:6px; border:2px s
         </div>
     </div>
 </div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    const url = new URL(window.location);
+
+    // Remove 'status' parameter to prevent duplicate popup
+    if (url.searchParams.has('status')) {
+        url.searchParams.delete('status');
+        window.history.replaceState({}, document.title, url.pathname + url.search);
+    }
+});
+</script>
 
 <script src="../theme.js"></script>
 </body>
